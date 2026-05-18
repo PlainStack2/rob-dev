@@ -41,7 +41,13 @@ from bot.ui.cards import (
     verification_panel_card,
 )
 from bot.ui.components import disable_all, replace_container
-from bot.ui.copy import FORM_URL, NOT_YOUR_CONFIRM, NOT_YOUR_HELP, NOT_YOUR_SETUP, NOT_YOURS
+from bot.ui.copy import (
+    FORM_URL,
+    NOT_YOUR_CONFIRM,
+    NOT_YOUR_HELP,
+    NOT_YOUR_SETUP,
+    NOT_YOURS,
+)
 
 if TYPE_CHECKING:
     from bot.verification import (
@@ -84,7 +90,9 @@ class RoleSelectionView(discord.ui.LayoutView):
         self.user_id = user_id
         self.selection: str | None = None
         self.message: discord.Message | None = None
-        domme_button = discord.ui.Button(label="Domme", style=discord.ButtonStyle.secondary)
+        domme_button = discord.ui.Button(
+            label="Domme", style=discord.ButtonStyle.secondary
+        )
         domme_button.callback = self._domme
         submissive_button = discord.ui.Button(
             label="Submissive",
@@ -121,8 +129,14 @@ class RoleSelectionView(discord.ui.LayoutView):
         self.selection = value
         self._set_container(
             role_selection_card(
-                discord.ui.Button(label="Domme", style=discord.ButtonStyle.secondary, disabled=True),
-                discord.ui.Button(label="Submissive", style=discord.ButtonStyle.secondary, disabled=True),
+                discord.ui.Button(
+                    label="Domme", style=discord.ButtonStyle.secondary, disabled=True
+                ),
+                discord.ui.Button(
+                    label="Submissive",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=True,
+                ),
                 selected_role=self.selection,
             )
         )
@@ -209,11 +223,15 @@ class StaffReviewView(discord.ui.LayoutView):
 
     async def _deny_underage(self, interaction: discord.Interaction) -> None:
         if self.service:
-            await self.service.review_request(interaction, self.request_id, "deny_underage")
+            await self.service.review_request(
+                interaction, self.request_id, "deny_underage"
+            )
 
     async def _deny_invalid(self, interaction: discord.Interaction) -> None:
         if self.service:
-            await self.service.review_request(interaction, self.request_id, "deny_invalid")
+            await self.service.review_request(
+                interaction, self.request_id, "deny_invalid"
+            )
 
 
 class FormLinkView(discord.ui.LayoutView):
@@ -231,7 +249,9 @@ class FormLinkView(discord.ui.LayoutView):
 
 
 class ReactionRoleSetupModal(discord.ui.Modal, title="Create Reaction Role Message"):
-    def __init__(self, service: "ReactionRoleService", *, default_channel_id: int) -> None:
+    def __init__(
+        self, service: "ReactionRoleService", *, default_channel_id: int
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
 
@@ -372,7 +392,9 @@ class HelpView(discord.ui.LayoutView):
 
 
 class DommeSetupView(discord.ui.LayoutView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -400,7 +422,9 @@ class DommeSetupView(discord.ui.LayoutView):
 
 
 class DommeSetupIntroView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(domme_setup_intro_card())
 
@@ -426,7 +450,9 @@ class DommeSetupIntroView(DommeSetupView):
 
 
 class DommeSetupNameView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(
             domme_setup_name_card(
@@ -441,7 +467,9 @@ class DommeSetupNameView(DommeSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(DommeNameModal(self.service, self.session))
+        await interaction.response.send_modal(
+            DommeNameModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary)
     async def skip_button(
@@ -461,7 +489,9 @@ class DommeSetupNameView(DommeSetupView):
 
 
 class DommeSetupDetailsView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(
             domme_setup_details_card(
@@ -479,7 +509,9 @@ class DommeSetupDetailsView(DommeSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(DommeDetailsModal(self.service, self.session))
+        await interaction.response.send_modal(
+            DommeDetailsModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary)
     async def skip_button(
@@ -499,7 +531,9 @@ class DommeSetupDetailsView(DommeSetupView):
 
 
 class DommeSetupPaymentsView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(
             domme_setup_payments_card(
@@ -522,7 +556,9 @@ class DommeSetupPaymentsView(DommeSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(DommeThroneLinksModal(self.service, self.session))
+        await interaction.response.send_modal(
+            DommeThroneLinksModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Payment Links", style=discord.ButtonStyle.primary)
     async def payment_links_button(
@@ -530,7 +566,9 @@ class DommeSetupPaymentsView(DommeSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(DommePaymentLinksModal(self.service, self.session))
+        await interaction.response.send_modal(
+            DommePaymentLinksModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Content Links", style=discord.ButtonStyle.primary)
     async def content_links_button(
@@ -538,7 +576,9 @@ class DommeSetupPaymentsView(DommeSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(DommeContentLinksModal(self.service, self.session))
+        await interaction.response.send_modal(
+            DommeContentLinksModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Continue", style=discord.ButtonStyle.success)
     async def continue_button(
@@ -566,7 +606,9 @@ class DommeSetupPaymentsView(DommeSetupView):
 
 
 class DommeSetupThroneView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(domme_setup_throne_card(throne=session.throne))
 
@@ -598,7 +640,9 @@ class DommeSetupThroneView(DommeSetupView):
 
 
 class DommeSetupColorView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(domme_setup_color_card(profile_color=session.profile_color))
 
@@ -638,7 +682,9 @@ class DommeSetupColorView(DommeSetupView):
 
 
 class DommeSetupReviewView(DommeSetupView):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(service, session)
         self._set_container(
             domme_setup_review_card(
@@ -748,7 +794,9 @@ class DommeDeleteConfirmView(discord.ui.LayoutView):
 
 
 class DommeNameModal(discord.ui.Modal, title="Name + Honorific"):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -776,7 +824,9 @@ class DommeNameModal(discord.ui.Modal, title="Name + Honorific"):
 
 
 class DommeDetailsModal(discord.ui.Modal, title="The Nitty Gritty"):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -830,7 +880,9 @@ class DommeDetailsModal(discord.ui.Modal, title="The Nitty Gritty"):
 
 
 class DommeThroneLinksModal(discord.ui.Modal, title="Throne & Tribute"):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -860,7 +912,9 @@ class DommeThroneLinksModal(discord.ui.Modal, title="Throne & Tribute"):
 
 
 class DommePaymentLinksModal(discord.ui.Modal, title="Payment Links"):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -904,7 +958,9 @@ class DommePaymentLinksModal(discord.ui.Modal, title="Payment Links"):
 
 
 class DommeContentLinksModal(discord.ui.Modal, title="Content Links"):
-    def __init__(self, service: DommeProfileService, session: DommeProfileSession) -> None:
+    def __init__(
+        self, service: DommeProfileService, session: DommeProfileSession
+    ) -> None:
         super().__init__(timeout=900)
         self.service = service
         self.session = session
@@ -950,6 +1006,7 @@ class DommeContentLinksModal(discord.ui.Modal, title="Content Links"):
 # ---------------------------------------------------------------------------
 # Sub profile setup views and modals
 # ---------------------------------------------------------------------------
+
 
 class SubSetupView(discord.ui.LayoutView):
     def __init__(self, service: SubProfileService, session: SubProfileSession) -> None:
@@ -1016,7 +1073,9 @@ class SubSetupNameView(SubSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(SubThroneNameModal(self.service, self.session))
+        await interaction.response.send_modal(
+            SubThroneNameModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary)
     async def skip_button(
@@ -1175,7 +1234,9 @@ class SubSetupDetailsView(SubSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(SubDetailsModal(self.service, self.session))
+        await interaction.response.send_modal(
+            SubDetailsModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary)
     async def skip_button(
@@ -1246,7 +1307,9 @@ class SubSetupKinksLimitsView(SubSetupView):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.send_modal(SubKinksLimitsModal(self.service, self.session))
+        await interaction.response.send_modal(
+            SubKinksLimitsModal(self.service, self.session)
+        )
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary)
     async def skip_button(
@@ -1340,8 +1403,12 @@ class _OwnerSelect(discord.ui.Select["SubSetupOwnerView"]):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         value = self.values[0]
-        self.view.session.owned_by_domme_user_id = None if value == "none" else int(value)
-        await self.view.service.refresh_owner_step(self.view.session, interaction, self.options)
+        self.view.session.owned_by_domme_user_id = (
+            None if value == "none" else int(value)
+        )
+        await self.view.service.refresh_owner_step(
+            self.view.session, interaction, self.options
+        )
 
 
 class SubSetupOwnerView(SubSetupView):
@@ -1424,43 +1491,43 @@ EVENT_BAN_ROLE_ID = {EVENT_BAN_ROLE_ID}
 
 # Fuzzy aliases: lowercase fragment → canonical field name
 _IMPORT_ALIASES: dict[str, str] = {
-    "guild":                    "GUILD_ID",
-    "guild_id":                 "GUILD_ID",
-    "server":                   "GUILD_ID",
-    "server_id":                "GUILD_ID",
-    "registration":             "REGISTRATION_CHANNEL_ID",
-    "registration_channel":     "REGISTRATION_CHANNEL_ID",
-    "reg":                      "REGISTRATION_CHANNEL_ID",
-    "verify_channel":           "REGISTRATION_CHANNEL_ID",
-    "verification_channel":     "REGISTRATION_CHANNEL_ID",
-    "leaderboard":              "LEADERBOARD_CHANNEL_ID",
-    "leaderboard_channel":      "LEADERBOARD_CHANNEL_ID",
-    "lb":                       "LEADERBOARD_CHANNEL_ID",
-    "lb_channel":               "LEADERBOARD_CHANNEL_ID",
-    "send_track":               "SEND_TRACK_CHANNEL_ID",
-    "send_track_channel":       "SEND_TRACK_CHANNEL_ID",
-    "sends":                    "SEND_TRACK_CHANNEL_ID",
-    "sends_channel":            "SEND_TRACK_CHANNEL_ID",
-    "track":                    "SEND_TRACK_CHANNEL_ID",
-    "track_channel":            "SEND_TRACK_CHANNEL_ID",
-    "domme":                    "DOMME_ROLE_ID",
-    "domme_role":               "DOMME_ROLE_ID",
-    "dom":                      "DOMME_ROLE_ID",
-    "dom_role":                 "DOMME_ROLE_ID",
-    "submissive":               "SUBMISSIVE_ROLE_ID",
-    "submissive_role":          "SUBMISSIVE_ROLE_ID",
-    "sub":                      "SUBMISSIVE_ROLE_ID",
-    "sub_role":                 "SUBMISSIVE_ROLE_ID",
-    "moderation":               "MODERATION_ROLE_ID",
-    "moderation_role":          "MODERATION_ROLE_ID",
-    "mod":                      "MODERATION_ROLE_ID",
-    "mod_role":                 "MODERATION_ROLE_ID",
-    "staff":                    "MODERATION_ROLE_ID",
-    "staff_role":               "MODERATION_ROLE_ID",
-    "event_ban":                "EVENT_BAN_ROLE_ID",
-    "event_ban_role":           "EVENT_BAN_ROLE_ID",
-    "ban_role":                 "EVENT_BAN_ROLE_ID",
-    "eventban":                 "EVENT_BAN_ROLE_ID",
+    "guild": "GUILD_ID",
+    "guild_id": "GUILD_ID",
+    "server": "GUILD_ID",
+    "server_id": "GUILD_ID",
+    "registration": "REGISTRATION_CHANNEL_ID",
+    "registration_channel": "REGISTRATION_CHANNEL_ID",
+    "reg": "REGISTRATION_CHANNEL_ID",
+    "verify_channel": "REGISTRATION_CHANNEL_ID",
+    "verification_channel": "REGISTRATION_CHANNEL_ID",
+    "leaderboard": "LEADERBOARD_CHANNEL_ID",
+    "leaderboard_channel": "LEADERBOARD_CHANNEL_ID",
+    "lb": "LEADERBOARD_CHANNEL_ID",
+    "lb_channel": "LEADERBOARD_CHANNEL_ID",
+    "send_track": "SEND_TRACK_CHANNEL_ID",
+    "send_track_channel": "SEND_TRACK_CHANNEL_ID",
+    "sends": "SEND_TRACK_CHANNEL_ID",
+    "sends_channel": "SEND_TRACK_CHANNEL_ID",
+    "track": "SEND_TRACK_CHANNEL_ID",
+    "track_channel": "SEND_TRACK_CHANNEL_ID",
+    "domme": "DOMME_ROLE_ID",
+    "domme_role": "DOMME_ROLE_ID",
+    "dom": "DOMME_ROLE_ID",
+    "dom_role": "DOMME_ROLE_ID",
+    "submissive": "SUBMISSIVE_ROLE_ID",
+    "submissive_role": "SUBMISSIVE_ROLE_ID",
+    "sub": "SUBMISSIVE_ROLE_ID",
+    "sub_role": "SUBMISSIVE_ROLE_ID",
+    "moderation": "MODERATION_ROLE_ID",
+    "moderation_role": "MODERATION_ROLE_ID",
+    "mod": "MODERATION_ROLE_ID",
+    "mod_role": "MODERATION_ROLE_ID",
+    "staff": "MODERATION_ROLE_ID",
+    "staff_role": "MODERATION_ROLE_ID",
+    "event_ban": "EVENT_BAN_ROLE_ID",
+    "event_ban_role": "EVENT_BAN_ROLE_ID",
+    "ban_role": "EVENT_BAN_ROLE_ID",
+    "eventban": "EVENT_BAN_ROLE_ID",
 }
 
 
@@ -1536,7 +1603,9 @@ def _write_channels_py(parsed: dict[str, int]) -> str | None:
     """Write channels.py from parsed IDs. Returns error message or None on success."""
     channels_path = pathlib.Path(__file__).parent / "channels.py"
     try:
-        channels_path.write_text(_CHANNELS_PY_TEMPLATE.format(**parsed), encoding="utf-8")
+        channels_path.write_text(
+            _CHANNELS_PY_TEMPLATE.format(**parsed), encoding="utf-8"
+        )
     except OSError as exc:
         return str(exc)
     return None
@@ -1685,7 +1754,8 @@ class ImportIdsUploadView(discord.ui.LayoutView):
 
         # Check required fields are present
         missing = [
-            f for f in _IMPORT_FIELD_NAMES
+            f
+            for f in _IMPORT_FIELD_NAMES
             if f not in parsed and f not in _OPTIONAL_IMPORT_FIELDS
         ]
         if missing:

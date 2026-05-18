@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 import discord
 
 from bot.ui.cards import success_view
-from bot.ui.components import action_section, make_container, separator, subtle, text_block, thumbnail_section
+from bot.ui.components import (
+    action_section,
+    make_container,
+    separator,
+    subtle,
+    text_block,
+    thumbnail_section,
+)
 from bot.ui.copy import DEPLOY_NOTIFICATION
 
 if TYPE_CHECKING:
@@ -183,9 +190,14 @@ class LeaderboardView(discord.ui.LayoutView):
         if register_button is None or not register_section_text:
             return [], []
         if register_kind == "domme":
-            return [separator(), action_section(register_section_text, register_button)], []
+            return [
+                separator(),
+                action_section(register_section_text, register_button),
+            ], []
         if register_kind == "sub":
-            display_unclaimed_total = unclaimed_total if unclaimed_total is not None else "$0.00"
+            display_unclaimed_total = (
+                unclaimed_total if unclaimed_total is not None else "$0.00"
+            )
             return [], [
                 separator(),
                 action_section(
@@ -201,8 +213,12 @@ class LeaderboardView(discord.ui.LayoutView):
 
     async def _open_register_modal(self, interaction: discord.Interaction) -> None:
         if self.cog is None or self.register_kind is None:
-            log.error("Leaderboard register button invoked without a configured cog or registration type.")
-            await interaction.response.send_message("Rob dropped the clipboard. Try again.", ephemeral=True)
+            log.error(
+                "Leaderboard register button invoked without a configured cog or registration type."
+            )
+            await interaction.response.send_message(
+                "Rob dropped the clipboard. Try again.", ephemeral=True
+            )
             return
         if self.register_kind == "domme":
             await interaction.response.send_modal(DommeSignupModal(self.cog))
@@ -210,8 +226,13 @@ class LeaderboardView(discord.ui.LayoutView):
         if self.register_kind == "sub":
             await interaction.response.send_modal(SubSignupModal(self.cog))
             return
-        log.error("Leaderboard register button received unsupported type: %s", self.register_kind)
-        await interaction.response.send_message("Rob lost track of that button. Try again in a sec.", ephemeral=True)
+        log.error(
+            "Leaderboard register button received unsupported type: %s",
+            self.register_kind,
+        )
+        await interaction.response.send_message(
+            "Rob lost track of that button. Try again in a sec.", ephemeral=True
+        )
 
 
 class MaintenanceView(discord.ui.LayoutView):
@@ -293,7 +314,9 @@ class SendNotificationView(discord.ui.LayoutView):
         super().__init__(timeout=None)
         sections: list[discord.ui.Item] = [separator()]
         sections.append(text_block(f"**Sub:** {sub_label}"))
-        sections.append(text_block(f"**Amount:** {amount_label} (United States Dollar)"))
+        sections.append(
+            text_block(f"**Amount:** {amount_label} (United States Dollar)")
+        )
 
         item_text = f"**Item:** {item_name or 'Unknown item'}"
         if item_image_url:
@@ -339,7 +362,11 @@ class EventStatusView(discord.ui.LayoutView):
     ) -> None:
         super().__init__(timeout=60)
 
-        event_block = "\n".join(configured_events) if configured_events else "No event rows loaded."
+        event_block = (
+            "\n".join(configured_events)
+            if configured_events
+            else "No event rows loaded."
+        )
         self.add_item(
             make_container(
                 "🎉 Rob | Events | Status",
@@ -351,8 +378,12 @@ class EventStatusView(discord.ui.LayoutView):
                     text_block(f"**Default theme**\n{default_theme_label}"),
                     text_block(f"**Configured events**\n{event_block}"),
                     separator(),
-                    text_block(f"**Registrations**\n{domme_count} Dommes · {sub_count} Subs"),
-                    text_block(f"**Live totals**\n{live_send_count} sends · {live_send_total}"),
+                    text_block(
+                        f"**Registrations**\n{domme_count} Dommes · {sub_count} Subs"
+                    ),
+                    text_block(
+                        f"**Live totals**\n{live_send_count} sends · {live_send_total}"
+                    ),
                 ],
                 footer="Rob read the config and complained quietly.",
                 accent_color=_COLOR_INFO,
@@ -431,7 +462,9 @@ class ThroneStatusView(discord.ui.LayoutView):
                     text_block(f"**Current event**\n{current_event}"),
                     text_block(f"**Registered Dommes**\n{tracked_dommes}"),
                     text_block(f"**Poll interval**\n{poll_interval_seconds} seconds"),
-                    text_block(f"**Per-Domme delay**\n{per_domme_delay_seconds:g} seconds"),
+                    text_block(
+                        f"**Per-Domme delay**\n{per_domme_delay_seconds:g} seconds"
+                    ),
                     text_block(
                         "**Cooldowns**\n"
                         f"{page_cooldown_count} page enrichment cooldown"
@@ -473,7 +506,9 @@ class FinalReportSummaryView(discord.ui.LayoutView):
                 sections=[
                     separator(),
                     text_block(f"**Event key**\n`{event_key}`"),
-                    text_block(f"**Event window**\nStarted: {started_at}\nEnded: {ended_at}"),
+                    text_block(
+                        f"**Event window**\nStarted: {started_at}\nEnded: {ended_at}"
+                    ),
                     text_block(
                         "**Summary**\n"
                         f"Total tracked: **{total_send_amount}**\n"
@@ -511,7 +546,9 @@ class UpdateNotificationView(discord.ui.LayoutView):
                 ),
                 sections=[
                     separator(),
-                    discord.ui.Section("Dismiss this tiny announcement.", accessory=ack_btn),
+                    discord.ui.Section(
+                        "Dismiss this tiny announcement.", accessory=ack_btn
+                    ),
                 ],
                 accent_color=_COLOR_SUCCESS,
                 footer=DEPLOY_NOTIFICATION,

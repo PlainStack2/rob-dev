@@ -33,13 +33,19 @@ class ThroneCreator:
             discord_user_id=row["discord_user_id"],
             throne_handle=row["throne_handle"],
             throne_creator_id=row["throne_creator_id"],
-            hide_own_purchases=bool(row["hide_own_purchases"]) if row["hide_own_purchases"] is not None else None,
+            hide_own_purchases=bool(row["hide_own_purchases"])
+            if row["hide_own_purchases"] is not None
+            else None,
             tracking_mode=row["tracking_mode"],
             webhook_secret=row["webhook_secret"],
             webhook_connected_at=row["webhook_connected_at"],
             overlay_detected=bool(row["overlay_detected"]),
-            last_overlay_check_at=row["last_overlay_check_at"] if "last_overlay_check_at" in keys else None,
-            last_successful_event_at=row["last_successful_event_at"] if "last_successful_event_at" in keys else None,
+            last_overlay_check_at=row["last_overlay_check_at"]
+            if "last_overlay_check_at" in keys
+            else None,
+            last_successful_event_at=row["last_successful_event_at"]
+            if "last_successful_event_at" in keys
+            else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -65,7 +71,9 @@ class ThroneWishlistItem:
             item_image_url=row["item_image_url"],
             amount_usd=float(row["amount_usd"]),
             currency=row["currency"],
-            is_available=bool(row["is_available"]) if row["is_available"] is not None else None,
+            is_available=bool(row["is_available"])
+            if row["is_available"] is not None
+            else None,
             last_seen_at=str(row["last_seen_at"]),
         )
 
@@ -157,9 +165,13 @@ class EventState:
             starts_at=row["starts_at"],
             ends_at=row["ends_at"],
             ended_at=row["ended_at"],
-            started_by=int(row["started_by"]) if row["started_by"] is not None else None,
+            started_by=int(row["started_by"])
+            if row["started_by"] is not None
+            else None,
             ended_by=int(row["ended_by"]) if row["ended_by"] is not None else None,
-            report_posted_at=row["report_posted_at"] if "report_posted_at" in row.keys() else None,
+            report_posted_at=row["report_posted_at"]
+            if "report_posted_at" in row.keys()
+            else None,
         )
 
 
@@ -185,7 +197,9 @@ class EventSend:
             id=int(row["id"]),
             domme_user_id=int(row["domme_user_id"]),
             sub_name=row["sub_name"],
-            claimed_sub_user_id=int(row["claimed_sub_user_id"]) if row["claimed_sub_user_id"] is not None else None,
+            claimed_sub_user_id=int(row["claimed_sub_user_id"])
+            if row["claimed_sub_user_id"] is not None
+            else None,
             amount_usd=float(row["amount_usd"]),
             item_name=row["item_name"],
             item_image_url=row["item_image_url"],
@@ -398,7 +412,9 @@ class Database:
         await self._ensure_column("event_sends", "event_id", "TEXT")
         await self._ensure_column("event_sends", "fallback_event_hash", "TEXT")
         await self._ensure_column("event_sends", "source", "TEXT")
-        await self._ensure_column("bot_config", "value", "TEXT NOT NULL", allow_existing=True)
+        await self._ensure_column(
+            "bot_config", "value", "TEXT NOT NULL", allow_existing=True
+        )
         await self.connection.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_event_sends_event_key
@@ -425,7 +441,9 @@ class Database:
         )
 
     async def _column_names(self, table_name: str) -> set[str]:
-        async with self.connection.execute(f"PRAGMA table_info({table_name})") as cursor:
+        async with self.connection.execute(
+            f"PRAGMA table_info({table_name})"
+        ) as cursor:
             rows = await cursor.fetchall()
         return {str(row["name"]) for row in rows}
 
@@ -442,7 +460,9 @@ class Database:
             return
         if allow_existing and not columns:
             return
-        await self.connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        await self.connection.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+        )
 
     async def close(self) -> None:
         if self._connection is not None:
@@ -549,7 +569,9 @@ class Database:
         )
         await self.connection.commit()
 
-    async def get_event_sub_by_name(self, *, sub_name: str) -> EventSubRegistration | None:
+    async def get_event_sub_by_name(
+        self, *, sub_name: str
+    ) -> EventSubRegistration | None:
         async with self.connection.execute(
             """
             SELECT user_id, sub_name, registered_at
@@ -564,7 +586,9 @@ class Database:
         return EventSubRegistration.from_row(row)
 
     async def count_event_sub_registrations(self) -> int:
-        async with self.connection.execute("SELECT COUNT(*) AS count FROM event_subs") as cursor:
+        async with self.connection.execute(
+            "SELECT COUNT(*) AS count FROM event_subs"
+        ) as cursor:
             row = await cursor.fetchone()
         return int(row["count"]) if row is not None else 0
 
@@ -584,7 +608,9 @@ class Database:
             row = await cursor.fetchone()
         return int(row["count"]) if row is not None else 0
 
-    async def get_event_sub_rank(self, *, user_id: int, event_key: str | None = None) -> int | None:
+    async def get_event_sub_rank(
+        self, *, user_id: int, event_key: str | None = None
+    ) -> int | None:
         where_sql, params = self._event_filter(event_key)
         query = f"""
             SELECT rank FROM (
@@ -726,7 +752,9 @@ class Database:
             for row in rows
         ]
 
-    async def get_event_domme_totals(self, *, event_key: str | None = None) -> list[EventDommeTotalRow]:
+    async def get_event_domme_totals(
+        self, *, event_key: str | None = None
+    ) -> list[EventDommeTotalRow]:
         where_sql, params = self._event_filter(event_key)
         query = f"""
             SELECT
@@ -777,7 +805,9 @@ class Database:
             send_count=int(row["send_count"]),
         )
 
-    async def get_event_domme_rank(self, *, user_id: int, event_key: str | None = None) -> int | None:
+    async def get_event_domme_rank(
+        self, *, user_id: int, event_key: str | None = None
+    ) -> int | None:
         where_sql, params = self._event_filter(event_key)
         query = f"""
             SELECT rank FROM (
@@ -970,7 +1000,9 @@ class Database:
             raise RuntimeError(f"Failed to end event state for {event_key}")
         return state
 
-    async def mark_event_report_posted(self, *, event_key: str, posted_at: str | None = None) -> None:
+    async def mark_event_report_posted(
+        self, *, event_key: str, posted_at: str | None = None
+    ) -> None:
         async with self.connection.execute(
             """
             UPDATE event_state
@@ -1104,7 +1136,9 @@ class Database:
 
     async def get_bot_config_ids(self) -> dict[str, int]:
         async with self.connection.execute(
-            "SELECT key, value FROM bot_config WHERE key IN ({})".format(",".join("?" * len(_CONFIG_INT_KEYS))),
+            "SELECT key, value FROM bot_config WHERE key IN ({})".format(
+                ",".join("?" * len(_CONFIG_INT_KEYS))
+            ),
             tuple(_CONFIG_INT_KEYS),
         ) as cursor:
             rows = await cursor.fetchall()
@@ -1120,16 +1154,22 @@ class Database:
         if not keys:
             return {}
         async with self.connection.execute(
-            "SELECT key, value FROM bot_config WHERE key IN ({})".format(",".join("?" * len(keys))),
+            "SELECT key, value FROM bot_config WHERE key IN ({})".format(
+                ",".join("?" * len(keys))
+            ),
             tuple(keys),
         ) as cursor:
             rows = await cursor.fetchall()
         return {str(row["key"]): str(row["value"]) for row in rows}
 
-    async def set_bot_config_values(self, *, values: dict[str, str | int | None]) -> None:
+    async def set_bot_config_values(
+        self, *, values: dict[str, str | int | None]
+    ) -> None:
         for key, value in values.items():
             if value is None:
-                await self.connection.execute("DELETE FROM bot_config WHERE key = ?", (key,))
+                await self.connection.execute(
+                    "DELETE FROM bot_config WHERE key = ?", (key,)
+                )
                 continue
             await self.connection.execute(
                 """
@@ -1201,7 +1241,9 @@ class Database:
                 discord_user_id,
                 throne_handle,
                 throne_creator_id,
-                int(bool(hide_own_purchases)) if hide_own_purchases is not None else None,
+                int(bool(hide_own_purchases))
+                if hide_own_purchases is not None
+                else None,
                 tracking_mode,
                 webhook_secret,
                 int(bool(overlay_detected)),
@@ -1212,7 +1254,9 @@ class Database:
         ):
             pass
         await self.connection.commit()
-        row = await self.get_throne_creator_by_handle(guild_id=guild_id, throne_handle=throne_handle)
+        row = await self.get_throne_creator_by_handle(
+            guild_id=guild_id, throne_handle=throne_handle
+        )
         if row is None:
             raise RuntimeError(f"Failed to upsert throne_creator for {throne_handle!r}")
         return row
@@ -1245,7 +1289,9 @@ class Database:
             rows = await cursor.fetchall()
         return [ThroneCreator.from_row(r) for r in rows]
 
-    async def get_throne_creators_for_guild(self, *, guild_id: str) -> list[ThroneCreator]:
+    async def get_throne_creators_for_guild(
+        self, *, guild_id: str
+    ) -> list[ThroneCreator]:
         async with self.connection.execute(
             """
             SELECT * FROM throne_creators
@@ -1292,7 +1338,9 @@ class Database:
                     item.item_image_url,
                     item.amount_usd,
                     item.currency,
-                    int(bool(item.is_available)) if item.is_available is not None else None,
+                    int(bool(item.is_available))
+                    if item.is_available is not None
+                    else None,
                     item.last_seen_at,
                 )
                 for item in items
@@ -1317,7 +1365,9 @@ class Database:
 
         await self.connection.commit()
 
-    async def get_throne_wishlist_items(self, *, creator_id: str) -> list[ThroneWishlistItem]:
+    async def get_throne_wishlist_items(
+        self, *, creator_id: str
+    ) -> list[ThroneWishlistItem]:
         async with self.connection.execute(
             """
             SELECT creator_id, wishlist_item_id, item_name, item_image_url, amount_usd, currency, is_available, last_seen_at
@@ -1346,7 +1396,9 @@ class Database:
             return None
         return ThroneCreator.from_row(row)
 
-    async def get_latest_webhook_send_for_guild(self, *, guild_id: str) -> ThroneWebhookSend | None:
+    async def get_latest_webhook_send_for_guild(
+        self, *, guild_id: str
+    ) -> ThroneWebhookSend | None:
         async with self.connection.execute(
             """
             SELECT
@@ -1447,7 +1499,6 @@ class Database:
         )
         await self.connection.commit()
 
-
     async def add_to_blacklist(
         self,
         *,
@@ -1466,7 +1517,7 @@ class Database:
             (str(discord_user_id), reason, _utc_now(), created_by),
         )
         await self.connection.commit()
-    
+
     async def remove_from_blacklist(self, *, discord_user_id: str) -> None:
         await self.connection.execute(
             "DELETE FROM rob_blacklist WHERE discord_user_id = ?",
@@ -1480,7 +1531,7 @@ class Database:
             (str(discord_user_id),),
         ) as cursor:
             return (await cursor.fetchone()) is not None
-    
+
     async def remove_throne_creator_by_discord_user(
         self,
         *,
@@ -1575,7 +1626,9 @@ class Database:
             return None
         return SendRequest.from_row(row)
 
-    async def resolve_send_request(self, *, request_id: int, status: str, resolved_at: str | None = None) -> None:
+    async def resolve_send_request(
+        self, *, request_id: int, status: str, resolved_at: str | None = None
+    ) -> None:
         await self.connection.execute(
             """
             UPDATE send_requests

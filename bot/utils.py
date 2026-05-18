@@ -1,4 +1,5 @@
 """Shared utility helpers used across the bot."""
+
 from __future__ import annotations
 
 import discord

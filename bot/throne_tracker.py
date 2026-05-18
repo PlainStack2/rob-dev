@@ -27,7 +27,13 @@ from bot.event_views import (
     format_relative_timestamp,
     format_timestamp,
 )
-from bot.ui.components import action_section, make_container, separator, simple_view, text_block
+from bot.ui.components import (
+    action_section,
+    make_container,
+    separator,
+    simple_view,
+    text_block,
+)
 from bot.throne_scraper import (
     fetch_public_wishlist_items,
     fetch_recent_sends_with_status,
@@ -105,7 +111,9 @@ class ThroneWebhookRefreshConfirmView(discord.ui.LayoutView):
     async def _ensure_requester(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.requester_id:
             return True
-        await interaction.response.send_message("That button is not for you.", ephemeral=True)
+        await interaction.response.send_message(
+            "That button is not for you.", ephemeral=True
+        )
         return False
 
     async def _confirm(self, interaction: discord.Interaction) -> None:
@@ -118,10 +126,14 @@ class ThroneWebhookRefreshConfirmView(discord.ui.LayoutView):
             webhook_secret=webhook_secret,
         )
 
-        webhook_url = self.cog._build_webhook_url(self.throne_creator_id, webhook_secret)
+        webhook_url = self.cog._build_webhook_url(
+            self.throne_creator_id, webhook_secret
+        )
         dm_failed = False
         try:
-            user = self.cog.bot.get_user(self.discord_user_id) or await self.cog.bot.fetch_user(self.discord_user_id)
+            user = self.cog.bot.get_user(
+                self.discord_user_id
+            ) or await self.cog.bot.fetch_user(self.discord_user_id)
             await user.send(
                 view=simple_view(
                     "👑 Rob | Throne | Webhook Reset",
@@ -258,7 +270,9 @@ class ThroneTrackerCog(commands.Cog):
             return
 
         event_cog = self.bot.get_cog("RobEventCog")
-        context = await event_cog.get_runtime_context() if event_cog is not None else None
+        context = (
+            await event_cog.get_runtime_context() if event_cog is not None else None
+        )
         await ctx.reply(
             view=self._simple_admin_view(
                 "👑 Rob | Throne Admin | Refresh",
@@ -266,8 +280,7 @@ class ThroneTrackerCog(commands.Cog):
                     text_block("Legacy polling is disabled."),
                     separator(),
                     text_block(
-                        "**Tracking mode**\n"
-                        f"{self._refresh_mode_label(context)}"
+                        f"**Tracking mode**\n{self._refresh_mode_label(context)}"
                     ),
                     separator(),
                     text_block(
@@ -290,18 +303,24 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply("Server only.", mention_author=False)
             return
 
-        creators = await self.database.get_throne_creators_for_guild(guild_id=str(ctx.guild.id))
+        creators = await self.database.get_throne_creators_for_guild(
+            guild_id=str(ctx.guild.id)
+        )
         total_count = len(creators)
         webhook_count = sum(1 for creator in creators if creator.webhook_connected_at)
         pending_count = total_count - webhook_count
         tracking_method = "Webhook only"
 
-        latest = await self.database.get_latest_webhook_send_for_guild(guild_id=str(ctx.guild.id))
+        latest = await self.database.get_latest_webhook_send_for_guild(
+            guild_id=str(ctx.guild.id)
+        )
         if latest is None:
             last_send_line = "Never"
             last_send_user_line = "Unknown"
         else:
-            user_label = await self._member_display_label(ctx.guild, int(latest.discord_user_id))
+            user_label = await self._member_display_label(
+                ctx.guild, int(latest.discord_user_id)
+            )
             last_send_line = format_timestamp(latest.sent_at)
             last_send_user_line = user_label
 
@@ -337,7 +356,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply("Server only.", mention_author=False)
             return
 
-        creators = await self.database.get_throne_creators_for_guild(guild_id=str(ctx.guild.id))
+        creators = await self.database.get_throne_creators_for_guild(
+            guild_id=str(ctx.guild.id)
+        )
         total_count = len(creators)
         if not creators:
             await ctx.reply(
@@ -355,8 +376,14 @@ class ThroneTrackerCog(commands.Cog):
         for index, page in enumerate(pages):
             sections: list[discord.ui.Item] = []
             for creator_index, creator in enumerate(page):
-                user_label = await self._member_display_label(ctx.guild, int(creator.discord_user_id))
-                status = "🟢 Connected" if creator.webhook_connected_at else "🟡 Waiting for first webhook"
+                user_label = await self._member_display_label(
+                    ctx.guild, int(creator.discord_user_id)
+                )
+                status = (
+                    "🟢 Connected"
+                    if creator.webhook_connected_at
+                    else "🟡 Waiting for first webhook"
+                )
                 if creator.last_successful_event_at:
                     status = f"{status} · last event {format_relative_timestamp(creator.last_successful_event_at)}"
                 if creator_index:
@@ -384,7 +411,9 @@ class ThroneTrackerCog(commands.Cog):
                 await ctx.send(view=view)
 
     @throne_group.command(name="search")
-    async def throne_search(self, ctx: commands.Context[commands.Bot], user_ref: str) -> None:
+    async def throne_search(
+        self, ctx: commands.Context[commands.Bot], user_ref: str
+    ) -> None:
         if not await self._check_admin_context(ctx):
             return
         if ctx.guild is None:
@@ -396,7 +425,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Throne Search",
-                    sections=[text_block("No Throne registration found for that user.")],
+                    sections=[
+                        text_block("No Throne registration found for that user.")
+                    ],
                     footer="Rob checked. Nothing filed under that reference.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -412,7 +443,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Throne Search",
-                    sections=[text_block("No Throne registration found for that user.")],
+                    sections=[
+                        text_block("No Throne registration found for that user.")
+                    ],
                     footer="Rob checked. Nothing filed under that reference.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -420,7 +453,9 @@ class ThroneTrackerCog(commands.Cog):
             )
             return
 
-        latest_send = await self.database.get_latest_webhook_send_for_domme(domme_user_id=user_id)
+        latest_send = await self.database.get_latest_webhook_send_for_domme(
+            domme_user_id=user_id
+        )
         if latest_send is None:
             send_time = "Never"
             send_from = "Unknown"
@@ -428,10 +463,22 @@ class ThroneTrackerCog(commands.Cog):
         else:
             send_time = format_timestamp(latest_send.sent_at)
             send_from = latest_send.sub_name or "Unknown"
-            send_amount = "Unknown" if latest_send.is_private else format_money(latest_send.amount_usd)
+            send_amount = (
+                "Unknown"
+                if latest_send.is_private
+                else format_money(latest_send.amount_usd)
+            )
 
-        webhook_status = "🟢 Connected" if creator.webhook_connected_at else "🟡 Waiting for first webhook"
-        connected_at = format_timestamp(creator.webhook_connected_at) if creator.webhook_connected_at else "Never"
+        webhook_status = (
+            "🟢 Connected"
+            if creator.webhook_connected_at
+            else "🟡 Waiting for first webhook"
+        )
+        connected_at = (
+            format_timestamp(creator.webhook_connected_at)
+            if creator.webhook_connected_at
+            else "Never"
+        )
         user_label = await self._member_display_label(ctx.guild, user_id)
         await ctx.reply(
             view=self._simple_admin_view(
@@ -465,10 +512,14 @@ class ThroneTrackerCog(commands.Cog):
 
     @throne_group.group(name="webhook", invoke_without_command=True)
     async def throne_webhook_group(self, ctx: commands.Context[commands.Bot]) -> None:
-        await ctx.reply("Rob knows: `!throne webhook refresh <@user|id>`", mention_author=False)
+        await ctx.reply(
+            "Rob knows: `!throne webhook refresh <@user|id>`", mention_author=False
+        )
 
     @throne_webhook_group.command(name="refresh")
-    async def throne_webhook_refresh(self, ctx: commands.Context[commands.Bot], user_ref: str) -> None:
+    async def throne_webhook_refresh(
+        self, ctx: commands.Context[commands.Bot], user_ref: str
+    ) -> None:
         if ctx.guild is None:
             await ctx.reply("Server only.", mention_author=False)
             return
@@ -481,7 +532,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Throne Webhook",
-                    sections=[text_block("No Throne registration found for that user.")],
+                    sections=[
+                        text_block("No Throne registration found for that user.")
+                    ],
                     footer="Rob cannot rotate a key without a matching row.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -497,7 +550,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Throne Webhook",
-                    sections=[text_block("No Throne registration found for that user.")],
+                    sections=[
+                        text_block("No Throne registration found for that user.")
+                    ],
                     footer="Rob cannot rotate a key without a matching row.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -558,8 +613,14 @@ class ThroneTrackerCog(commands.Cog):
             return
 
         event_cog = self.bot.get_cog("RobEventCog")
-        context = await event_cog.get_runtime_context() if event_cog is not None else None
-        event_key = context.event_key if context is not None and context.is_event_active else None
+        context = (
+            await event_cog.get_runtime_context() if event_cog is not None else None
+        )
+        event_key = (
+            context.event_key
+            if context is not None and context.is_event_active
+            else None
+        )
 
         sub_name = sub.strip() or None
         result = await self.record_send(
@@ -576,7 +637,9 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Add Send",
-                    sections=[text_block("Send could not be recorded (possible duplicate).")],
+                    sections=[
+                        text_block("Send could not be recorded (possible duplicate).")
+                    ],
                     footer="Rob checked. Nothing filed under that reference.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -648,7 +711,11 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Add Sub",
-                    sections=[text_block(f"The name `{clean_name}` is already claimed by another user.")],
+                    sections=[
+                        text_block(
+                            f"The name `{clean_name}` is already claimed by another user."
+                        )
+                    ],
                     footer="Rob cannot register a name that is taken.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -667,8 +734,7 @@ class ThroneTrackerCog(commands.Cog):
                 "👑 Rob | Throne Admin | Sub Added",
                 sections=[
                     text_block(
-                        f"**Discord:** {user_label}\n"
-                        f"**Sending name:** `{clean_name}`"
+                        f"**Discord:** {user_label}\n**Sending name:** `{clean_name}`"
                     )
                 ],
                 footer="Rob linked the sub. Sends will be claimed automatically.",
@@ -708,7 +774,11 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Add Domme",
-                    sections=[text_block("That Throne link looks wrong. Try a full Throne URL or username.")],
+                    sections=[
+                        text_block(
+                            "That Throne link looks wrong. Try a full Throne URL or username."
+                        )
+                    ],
                     footer="Rob squinted at that link and found nothing.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -726,7 +796,11 @@ class ThroneTrackerCog(commands.Cog):
             await ctx.reply(
                 view=self._simple_admin_view(
                     "⚠️ Rob | Errors | Add Domme",
-                    sections=[text_block("Rob could not resolve that Throne profile. Check the link and try again.")],
+                    sections=[
+                        text_block(
+                            "Rob could not resolve that Throne profile. Check the link and try again."
+                        )
+                    ],
                     footer="Throne returned nothing useful.",
                     accent_color=_EMBED_COLOR_ERROR,
                 ),
@@ -741,8 +815,16 @@ class ThroneTrackerCog(commands.Cog):
             guild_id=guild_id,
             throne_handle=creator_info.throne_handle,
         )
-        webhook_secret = existing.webhook_secret if existing and existing.webhook_secret else secrets.token_urlsafe(32)
-        tracking_mode = "webhook" if existing is not None and existing.tracking_mode == "webhook" else "disabled"
+        webhook_secret = (
+            existing.webhook_secret
+            if existing and existing.webhook_secret
+            else secrets.token_urlsafe(32)
+        )
+        tracking_mode = (
+            "webhook"
+            if existing is not None and existing.tracking_mode == "webhook"
+            else "disabled"
+        )
 
         throne_creator = await self.database.upsert_throne_creator(
             guild_id=guild_id,
@@ -760,7 +842,9 @@ class ThroneTrackerCog(commands.Cog):
         if event_cog is not None:
             await event_cog.sync_leaderboard_channel()
 
-        webhook_url = self._build_webhook_url(creator_info.creator_id, throne_creator.webhook_secret)
+        webhook_url = self._build_webhook_url(
+            creator_info.creator_id, throne_creator.webhook_secret
+        )
         mode_labels = {
             "webhook": "🟢 Webhook connected",
             "disabled": "🟡 Waiting for webhook setup",
@@ -797,7 +881,6 @@ class ThroneTrackerCog(commands.Cog):
             mention_author=False,
         )
 
-
         if ctx.guild is None or not isinstance(ctx.author, discord.Member):
             await ctx.reply("Server only.", mention_author=False)
             return False
@@ -819,7 +902,10 @@ class ThroneTrackerCog(commands.Cog):
             if app_info.owner is not None:
                 owner_ids.add(app_info.owner.id)
         except discord.HTTPException:
-            log.warning("Could not resolve bot application owner for webhook refresh checks.", exc_info=True)
+            log.warning(
+                "Could not resolve bot application owner for webhook refresh checks.",
+                exc_info=True,
+            )
         return ctx.author.id in owner_ids
 
     @staticmethod
@@ -859,10 +945,14 @@ class ThroneTrackerCog(commands.Cog):
 
     @staticmethod
     def _chunked(items: Sequence[object], size: int) -> list[list[object]]:
-        return [list(items[index:index + size]) for index in range(0, len(items), size)]
+        return [
+            list(items[index : index + size]) for index in range(0, len(items), size)
+        ]
 
     def _build_webhook_url(self, creator_id: str, secret: str) -> str:
-        base_url = (self.config.throne_webhook_base_url or _DEFAULT_WEBHOOK_BASE_URL).rstrip("/")
+        base_url = (
+            self.config.throne_webhook_base_url or _DEFAULT_WEBHOOK_BASE_URL
+        ).rstrip("/")
         return f"{base_url}/throne/webhook/{creator_id}/{secret}"
 
     async def run_manual_refresh(self) -> PollCycleResult:
@@ -878,17 +968,28 @@ class ThroneTrackerCog(commands.Cog):
             cycle_error: str | None = None
 
             event_cog = self.bot.get_cog("RobEventCog")
-            context = await event_cog.get_runtime_context() if event_cog is not None else None
-            active_event_key = context.event_key if context is not None and context.is_event_active else None
+            context = (
+                await event_cog.get_runtime_context() if event_cog is not None else None
+            )
+            active_event_key = (
+                context.event_key
+                if context is not None and context.is_event_active
+                else None
+            )
 
             profiles = await self.database.get_all_event_dommes()
             tracked = [
                 profile
                 for profile in profiles
-                if profile.throne_url and normalize_throne_url(profile.throne_url) is not None
+                if profile.throne_url
+                and normalize_throne_url(profile.throne_url) is not None
             ]
             if force_domme_user_id is not None:
-                tracked = [profile for profile in tracked if profile.user_id == force_domme_user_id]
+                tracked = [
+                    profile
+                    for profile in tracked
+                    if profile.user_id == force_domme_user_id
+                ]
 
             if not tracked:
                 self._last_successful_poll_at = datetime.now(timezone.utc).isoformat()
@@ -900,13 +1001,20 @@ class ThroneTrackerCog(commands.Cog):
 
             posted_total = 0
             for index, profile in enumerate(tracked):
-                if force_domme_user_id is None and self._is_in_slow_retry(profile.user_id):
+                if force_domme_user_id is None and self._is_in_slow_retry(
+                    profile.user_id
+                ):
                     continue
                 try:
-                    posted_total += await self._poll_one_domme(profile, event_key=active_event_key)
+                    posted_total += await self._poll_one_domme(
+                        profile, event_key=active_event_key
+                    )
                 except Exception as exc:  # noqa: BLE001
                     cycle_error = f"Domme {profile.user_id} poll failed: {exc}"
-                    log.exception("Unexpected error polling Domme %s; continuing.", profile.user_id)
+                    log.exception(
+                        "Unexpected error polling Domme %s; continuing.",
+                        profile.user_id,
+                    )
                 if index < len(tracked) - 1:
                     delay = self.config.throne_poll_per_domme_delay_seconds
                     if delay > 0:
@@ -917,7 +1025,9 @@ class ThroneTrackerCog(commands.Cog):
                     await event_cog.sync_leaderboard_channel(context=context)
                 except Exception:  # noqa: BLE001
                     cycle_error = "Leaderboard sync failed after polling."
-                    log.exception("Failed to sync leaderboard channel after Throne poll.")
+                    log.exception(
+                        "Failed to sync leaderboard channel after Throne poll."
+                    )
 
             self._last_successful_poll_at = datetime.now(timezone.utc).isoformat()
             self._last_error = cycle_error
@@ -945,7 +1055,9 @@ class ThroneTrackerCog(commands.Cog):
         count = self._failure_counts.get(domme_user_id, 0) + 1
         self._failure_counts[domme_user_id] = count
         if count == _FAILURE_THRESHOLD:
-            self._slow_retry_until[domme_user_id] = time.monotonic() + _SLOW_RETRY_INTERVAL_S
+            self._slow_retry_until[domme_user_id] = (
+                time.monotonic() + _SLOW_RETRY_INTERVAL_S
+            )
             log.warning(
                 "Throne scraping for Domme %s failed %s times in a row; backing off to 1-hour retry.",
                 domme_user_id,
@@ -959,13 +1071,17 @@ class ThroneTrackerCog(commands.Cog):
     def _start_page_enrichment_cooldown(self, domme_user_id: int) -> None:
         if self._is_page_enrichment_on_cooldown(domme_user_id):
             return
-        self._page_enrichment_cooldown_until[domme_user_id] = time.monotonic() + _PAGE_ENRICHMENT_COOLDOWN_S
+        self._page_enrichment_cooldown_until[domme_user_id] = (
+            time.monotonic() + _PAGE_ENRICHMENT_COOLDOWN_S
+        )
         log.warning(
             "Throne page enrichment for Domme %s hit HTTP 429. Pausing page enrichment for 60 minutes while overlay tracking keeps running.",
             domme_user_id,
         )
 
-    async def _poll_one_domme(self, profile: EventDommeRegistration, *, event_key: str | None) -> int:
+    async def _poll_one_domme(
+        self, profile: EventDommeRegistration, *, event_key: str | None
+    ) -> int:
         assert profile.throne_url is not None
         http = await self._get_http()
         result = await fetch_recent_sends_with_status(
@@ -973,7 +1089,9 @@ class ThroneTrackerCog(commands.Cog):
             http=http,
             user_agent=self.config.throne_user_agent,
             timeout_seconds=self.config.throne_http_timeout_seconds,
-            allow_page_enrichment=not self._is_page_enrichment_on_cooldown(profile.user_id),
+            allow_page_enrichment=not self._is_page_enrichment_on_cooldown(
+                profile.user_id
+            ),
         )
 
         if result.page_status == "rate_limited":
@@ -988,9 +1106,15 @@ class ThroneTrackerCog(commands.Cog):
         if not scraped:
             return 0
 
-        is_first_run = not await self.database.has_any_event_sends_for_domme(domme_user_id=profile.user_id)
-        known_external_ids = await self.database.get_known_event_external_ids_for_domme(domme_user_id=profile.user_id)
-        new_items = [item for item in scraped if item.external_id not in known_external_ids]
+        is_first_run = not await self.database.has_any_event_sends_for_domme(
+            domme_user_id=profile.user_id
+        )
+        known_external_ids = await self.database.get_known_event_external_ids_for_domme(
+            domme_user_id=profile.user_id
+        )
+        new_items = [
+            item for item in scraped if item.external_id not in known_external_ids
+        ]
         if not new_items:
             return 0
 
@@ -1075,7 +1199,9 @@ class ThroneTrackerCog(commands.Cog):
             event_cog = self.bot.get_cog("RobEventCog")
             if event_cog is not None:
                 await event_cog.sync_leaderboard_channel()
-                await event_cog.process_count_restore_from_send(domme_user_id=domme_user_id, send=send)
+                await event_cog.process_count_restore_from_send(
+                    domme_user_id=domme_user_id, send=send
+                )
         except Exception:
             log.exception("Failed to sync leaderboard after send id %s.", send_id)
 
@@ -1166,7 +1292,9 @@ class ThroneTrackerCog(commands.Cog):
                 user_id=send.claimed_sub_user_id,
                 event_key=send.event_key,
             )
-            sub_rank_line = f"{sub_member.mention}'s rank after this send #{sub_rank_value}"
+            sub_rank_line = (
+                f"{sub_member.mention}'s rank after this send #{sub_rank_value}"
+            )
             sub_total_line = (
                 f"Total amount sent by sub to date: {format_money(sub_total.total_usd)} "
                 "(United States Dollar)"
@@ -1179,11 +1307,17 @@ class ThroneTrackerCog(commands.Cog):
             dutchman_rank_value = dutchman_rank if dutchman_rank is not None else "?"
             anonymous_rank_line = f"The Flying Dutchmans Rank: #{dutchman_rank_value}"
 
-        amount_label = format_money(send.amount_usd) if not send.is_private else "Unknown"
+        amount_label = (
+            format_money(send.amount_usd) if not send.is_private else "Unknown"
+        )
         title = f"💸 New Send to {domme_nickname}! 💸"
-        accent_color = theme.accent_color if theme is not None else discord.Colour.green()
+        accent_color = (
+            theme.accent_color if theme is not None else discord.Colour.green()
+        )
         footer = f"Please enjoy this send equally | {format_timestamp(send.sent_at)}"
-        send_public_id = self._public_send_id(send_id=send.id, domme_user_id=domme_user_id, sent_at=send.sent_at)
+        send_public_id = self._public_send_id(
+            send_id=send.id, domme_user_id=domme_user_id, sent_at=send.sent_at
+        )
 
         if getattr(self.bot, "maintenance_mode", False):
             log.info(
@@ -1210,7 +1344,9 @@ class ThroneTrackerCog(commands.Cog):
                 )
             )
         except discord.HTTPException:
-            self._last_error = f"Failed to post send notification for send id {send_id}."
+            self._last_error = (
+                f"Failed to post send notification for send id {send_id}."
+            )
             log.exception(
                 "Failed to post send notification for send id %s in channel %s.",
                 send_id,
@@ -1240,7 +1376,11 @@ class ThroneTrackerCog(commands.Cog):
         return f"ROB-{send_id:06d}-{digest}"
 
     def slow_retry_count(self) -> int:
-        active = [domme_id for domme_id in list(self._slow_retry_until) if self._is_in_slow_retry(domme_id)]
+        active = [
+            domme_id
+            for domme_id in list(self._slow_retry_until)
+            if self._is_in_slow_retry(domme_id)
+        ]
         return len(active)
 
     def page_enrichment_cooldown_count(self) -> int:
@@ -1274,7 +1414,9 @@ class ThroneTrackerCog(commands.Cog):
         if not self.config.guild_id:
             return 0
 
-        creators = await self.database.get_throne_creators_for_guild(guild_id=str(self.config.guild_id))
+        creators = await self.database.get_throne_creators_for_guild(
+            guild_id=str(self.config.guild_id)
+        )
         if not creators:
             return 0
 

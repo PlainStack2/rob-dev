@@ -16,7 +16,9 @@ def _coerce_color(
 ) -> discord.Colour | int | None:
     if accent_color is None:
         return COLOR_INFO
-    return discord.Colour(accent_color) if isinstance(accent_color, int) else accent_color
+    return (
+        discord.Colour(accent_color) if isinstance(accent_color, int) else accent_color
+    )
 
 
 def text_block(text: str) -> discord.ui.TextDisplay:

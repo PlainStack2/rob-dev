@@ -49,9 +49,12 @@ class ScrapedSend:
 @dataclass(frozen=True)
 class CreatorInfo:
     """Resolved Throne creator metadata."""
+
     creator_id: str
     throne_handle: str
-    hide_own_purchases: bool | None  # None = unknown (e.g. resolved from stream-alert URL)
+    hide_own_purchases: (
+        bool | None
+    )  # None = unknown (e.g. resolved from stream-alert URL)
 
 
 @dataclass(frozen=True)
@@ -247,7 +250,9 @@ async def has_overlay_data(
     timeout_seconds: float = 10.0,
 ) -> bool:
     """Return True if the creator has any overlay documents in Firestore."""
-    documents = await _query_overlay_documents(creator_id, http=http, timeout_seconds=timeout_seconds)
+    documents = await _query_overlay_documents(
+        creator_id, http=http, timeout_seconds=timeout_seconds
+    )
     return bool(documents)
 
 
@@ -285,8 +290,7 @@ async def fetch_public_wishlist_items(
     page_size: int = 100,
     max_pages: int = 5,
 ) -> list[WishlistItemRecord] | None:
-    """Look up a creator's public wishlist items and best-match a purchased gift.
-    """
+    """Look up a creator's public wishlist items and best-match a purchased gift."""
     if not creator_id:
         return None
 
@@ -299,9 +303,7 @@ async def fetch_public_wishlist_items(
         if next_page_token:
             params["pageToken"] = next_page_token
 
-        url = (
-            f"{_FIRESTORE_DOCUMENTS_URL}/creators/{quote(creator_id, safe='')}/wishlistItems"
-        )
+        url = f"{_FIRESTORE_DOCUMENTS_URL}/creators/{quote(creator_id, safe='')}/wishlistItems"
         try:
             async with http.get(url, params=params, timeout=timeout) as resp:
                 if resp.status == 404:
@@ -317,7 +319,11 @@ async def fetch_public_wishlist_items(
                     return None
                 data = await resp.json()
         except (aiohttp.ClientError, TimeoutError) as exc:
-            log.warning("Failed to fetch public wishlist items for creator %s: %s", creator_id, exc)
+            log.warning(
+                "Failed to fetch public wishlist items for creator %s: %s",
+                creator_id,
+                exc,
+            )
             return None
 
         documents = data.get("documents", [])
@@ -338,7 +344,8 @@ async def fetch_public_wishlist_items(
                 WishlistItemRecord(
                     wishlist_item_id=wishlist_item_id,
                     item_name=_coerce_str(fields.get("name")),
-                    item_image_url=_coerce_str(fields.get("imgLink")) or _coerce_str(fields.get("imageUrl")),
+                    item_image_url=_coerce_str(fields.get("imgLink"))
+                    or _coerce_str(fields.get("imageUrl")),
                     amount_usd=price,
                     currency=_coerce_str(fields.get("currency")),
                     is_available=_coerce_bool(fields.get("isAvailable")),
@@ -370,7 +377,9 @@ def match_wishlist_item_price(
             if _image_match_strength(wanted_image, item.item_image_url) == 2
         ]
         if exact_image_matches:
-            return _pick_wishlist_price_candidate(exact_image_matches, wanted_name=wanted_name)
+            return _pick_wishlist_price_candidate(
+                exact_image_matches, wanted_name=wanted_name
+            )
 
         loose_image_matches = [
             item
@@ -378,7 +387,9 @@ def match_wishlist_item_price(
             if _image_match_strength(wanted_image, item.item_image_url) == 1
         ]
         if loose_image_matches:
-            return _pick_wishlist_price_candidate(loose_image_matches, wanted_name=wanted_name)
+            return _pick_wishlist_price_candidate(
+                loose_image_matches, wanted_name=wanted_name
+            )
 
     if wanted_name is not None:
         exact_name_matches = [
@@ -416,7 +427,9 @@ def match_wishlist_item_price(
         )
         for item in items
     ]
-    scored_candidates = [(score, item) for score, item in scored_candidates if score > 0]
+    scored_candidates = [
+        (score, item) for score, item in scored_candidates if score > 0
+    ]
     if not scored_candidates:
         return None
 
@@ -498,9 +511,12 @@ async def fetch_recent_sends_with_status(
     )
     page_sends: list[ScrapedSend] | None = None
     page_status = "skipped"
-    should_fetch_page = allow_page_enrichment and normalized is not None and (
-        overlay_sends is None or any(
-        send.amount_usd is None for send in overlay_sends
+    should_fetch_page = (
+        allow_page_enrichment
+        and normalized is not None
+        and (
+            overlay_sends is None
+            or any(send.amount_usd is None for send in overlay_sends)
         )
     )
 
@@ -515,7 +531,9 @@ async def fetch_recent_sends_with_status(
         page_status = page_result.status
     elif overlay_sends is None and normalized is None:
         log.warning("Skipping unrecognised Throne URL: %r", throne_url)
-        return RecentSendsFetchResult(sends=None, overlay_succeeded=False, page_status="skipped")
+        return RecentSendsFetchResult(
+            sends=None, overlay_succeeded=False, page_status="skipped"
+        )
 
     if overlay_sends is not None:
         if page_sends:
@@ -594,7 +612,9 @@ async def _fetch_page_sends(
             if resp.status == 429:
                 return PageFetchResult(sends=None, status="rate_limited")
             if resp.status != 200:
-                log.warning("Throne page %s returned HTTP %s", normalized_url, resp.status)
+                log.warning(
+                    "Throne page %s returned HTTP %s", normalized_url, resp.status
+                )
                 return PageFetchResult(sends=None, status=f"http_{resp.status}")
             html = await resp.text()
     except (aiohttp.ClientError, TimeoutError) as exc:
@@ -634,7 +654,9 @@ def _merge_overlay_and_page_sends(
             ScrapedSend(
                 external_id=overlay_send.external_id,
                 sender_name=overlay_send.sender_name or matched.sender_name,
-                amount_usd=matched.amount_usd if matched.amount_usd is not None else overlay_send.amount_usd,
+                amount_usd=matched.amount_usd
+                if matched.amount_usd is not None
+                else overlay_send.amount_usd,
                 item_name=overlay_send.item_name or matched.item_name,
                 item_image_url=overlay_send.item_image_url or matched.item_image_url,
                 sent_at=overlay_send.sent_at,
@@ -657,14 +679,20 @@ def _wishlist_item_match_score(
     if wanted_name and normalized_candidate_name:
         if wanted_name == normalized_candidate_name:
             score += 4
-        elif wanted_name in normalized_candidate_name or normalized_candidate_name in wanted_name:
+        elif (
+            wanted_name in normalized_candidate_name
+            or normalized_candidate_name in wanted_name
+        ):
             score += 2
 
     normalized_candidate_image = _normalize_image_key(candidate_image)
     if wanted_image and normalized_candidate_image:
         if wanted_image == normalized_candidate_image:
             score += 4
-        elif wanted_image.rsplit("/", 1)[-1] == normalized_candidate_image.rsplit("/", 1)[-1]:
+        elif (
+            wanted_image.rsplit("/", 1)[-1]
+            == normalized_candidate_image.rsplit("/", 1)[-1]
+        ):
             score += 3
 
     return score
@@ -686,12 +714,20 @@ def _image_match_strength(
 
 def _send_match_score(left: ScrapedSend, right: ScrapedSend) -> int:
     score = 0
-    if left.sender_name and right.sender_name and left.sender_name.casefold() == right.sender_name.casefold():
+    if (
+        left.sender_name
+        and right.sender_name
+        and left.sender_name.casefold() == right.sender_name.casefold()
+    ):
         score += 2
     elif left.sender_name is None and right.sender_name is None:
         score += 1
 
-    if left.item_name and right.item_name and left.item_name.casefold() == right.item_name.casefold():
+    if (
+        left.item_name
+        and right.item_name
+        and left.item_name.casefold() == right.item_name.casefold()
+    ):
         score += 2
 
     try:
@@ -735,7 +771,9 @@ async def _resolve_creator_id(
             "limit": 1,
         }
     }
-    rows = await _run_firestore_query(payload, http=http, timeout_seconds=timeout_seconds)
+    rows = await _run_firestore_query(
+        payload, http=http, timeout_seconds=timeout_seconds
+    )
     if rows is None:
         return None
     for row in rows:
@@ -770,7 +808,9 @@ async def _resolve_creator_info_by_username(
             "limit": 1,
         }
     }
-    rows = await _run_firestore_query(payload, http=http, timeout_seconds=timeout_seconds)
+    rows = await _run_firestore_query(
+        payload, http=http, timeout_seconds=timeout_seconds
+    )
     if rows is None:
         return None
     for row in rows:
@@ -816,7 +856,9 @@ async def _resolve_creator_info_by_id(
             "limit": 1,
         }
     }
-    rows = await _run_firestore_query(payload, http=http, timeout_seconds=timeout_seconds)
+    rows = await _run_firestore_query(
+        payload, http=http, timeout_seconds=timeout_seconds
+    )
     if rows is None:
         return None
     for row in rows:
@@ -835,7 +877,9 @@ async def _resolve_creator_info_by_id(
             hide_own_purchases=hide_own_purchases,
         )
     # Creator id is valid (came from stream-alert URL) but not in Firestore.
-    return CreatorInfo(creator_id=creator_id, throne_handle=creator_id, hide_own_purchases=None)
+    return CreatorInfo(
+        creator_id=creator_id, throne_handle=creator_id, hide_own_purchases=None
+    )
 
 
 async def _query_overlay_documents(
@@ -863,7 +907,9 @@ async def _query_overlay_documents(
             "limit": _OVERLAY_QUERY_LIMIT,
         }
     }
-    rows = await _run_firestore_query(payload, http=http, timeout_seconds=timeout_seconds)
+    rows = await _run_firestore_query(
+        payload, http=http, timeout_seconds=timeout_seconds
+    )
     if rows is None:
         return None
     documents: list[dict[str, Any]] = []
@@ -889,14 +935,20 @@ async def _run_firestore_query(
         ) as resp:
             if resp.status != 200:
                 text = await resp.text()
-                log.warning("Throne Firestore query returned HTTP %s: %s", resp.status, text[:500])
+                log.warning(
+                    "Throne Firestore query returned HTTP %s: %s",
+                    resp.status,
+                    text[:500],
+                )
                 return None
             data = await resp.json()
     except (aiohttp.ClientError, TimeoutError) as exc:
         log.warning("Failed to query Throne Firestore: %s", exc)
         return None
     if not isinstance(data, list):
-        log.warning("Unexpected Throne Firestore query response shape: %r", type(data).__name__)
+        log.warning(
+            "Unexpected Throne Firestore query response shape: %r", type(data).__name__
+        )
         return None
     return [row for row in data if isinstance(row, dict)]
 
@@ -920,7 +972,9 @@ def _overlay_document_to_send(document: dict[str, Any]) -> ScrapedSend | None:
     sender_name = _coerce_name(overlay_info.get("gifterUsername"))
     item_name = _coerce_str(overlay_info.get("itemName"))
     item_image_url = _coerce_str(overlay_info.get("itemImage"))
-    if item_image_url and not item_image_url.lower().startswith(("http://", "https://")):
+    if item_image_url and not item_image_url.lower().startswith(
+        ("http://", "https://")
+    ):
         item_image_url = None
 
     return ScrapedSend(
@@ -1121,7 +1175,9 @@ def _build_scraped_send(obj: dict[str, Any]) -> ScrapedSend | None:
 
     item_name = _coerce_str(_first_value(obj, _ITEM_NAME_KEYS))
     item_image_url = _coerce_str(_first_value(obj, _ITEM_IMAGE_KEYS))
-    if item_image_url and not item_image_url.lower().startswith(("http://", "https://")):
+    if item_image_url and not item_image_url.lower().startswith(
+        ("http://", "https://")
+    ):
         item_image_url = None
 
     return ScrapedSend(

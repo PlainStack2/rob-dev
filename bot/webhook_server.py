@@ -26,7 +26,11 @@ from aiohttp import web
 from bot.config import BotConfig
 from bot.database import Database, ThroneWishlistItem
 from bot.event_views import BroadcastNotificationView
-from bot.throne_scraper import WishlistItemRecord, fetch_public_wishlist_items, match_wishlist_item_price
+from bot.throne_scraper import (
+    WishlistItemRecord,
+    fetch_public_wishlist_items,
+    match_wishlist_item_price,
+)
 from bot.utils import normalize_sender_name
 
 if TYPE_CHECKING:
@@ -63,36 +67,36 @@ def _compute_fallback_hash(
 
 def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
     """Extract normalised gift fields from a Throne webhook payload.
-    
+
     Supports both the documented Throne webhook envelope where event-specific
     values live under ``payload["data"]`` and older / alternate top-level
     shapes. Never raises on missing fields.
     """
-    
+
     def _as_dict(value: Any) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
-    
+
     def _first(*values: Any) -> Any:
         for value in values:
             if value is not None:
                 return value
         return None
-    
+
     def _first_str(*values: Any) -> str | None:
         value = _first(*values)
         if value is None:
             return None
         text = str(value).strip()
         return text or None
-    
+
     def _truthy(*values: Any) -> bool:
         for value in values:
             if bool(value):
                 return True
         return False
-    
+
     data = _as_dict(payload.get("data"))
-    
+
     # Top-level envelope fields
     event_id: str | None = _first_str(
         payload.get("id"),
@@ -104,7 +108,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("eventType"),
         payload.get("event_type"),
     )
-    
+
     # Mixed top-level / nested fields
     order_id: str | None = _first_str(
         data.get("orderId"),
@@ -120,7 +124,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         data.get("message"),
         payload.get("message"),
     )
-    
+
     purchased_at: str | None = _first_str(
         data.get("purchasedAt"),
         data.get("purchased_at"),
@@ -133,7 +137,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("created_at"),
         payload.get("timestamp"),
     )
-    
+
     # Sender / gifter info
     gifter_obj: dict[str, Any] = {}
     for container in (data, payload):
@@ -144,7 +148,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
                 break
         if gifter_obj:
             break
-    
+
     gifter_username: str | None = _first_str(
         gifter_obj.get("username"),
         gifter_obj.get("name"),
@@ -161,7 +165,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("senderName"),
         payload.get("sender_name"),
     )
-    
+
     is_anonymous: bool = _truthy(
         gifter_obj.get("isAnonymous"),
         data.get("isAnonymous"),
@@ -173,7 +177,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if is_anonymous:
         gifter_username = None
-    
+
     # Item info
     item_obj: dict[str, Any] = {}
     for container in (data, payload):
@@ -184,7 +188,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
                 break
         if item_obj:
             break
-    
+
     item_name: str | None = _first_str(
         item_obj.get("name"),
         item_obj.get("title"),
@@ -197,7 +201,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("giftName"),
         payload.get("gift_name"),
     )
-    
+
     item_image_url: str | None = _first_str(
         item_obj.get("imageUrl"),
         item_obj.get("image_url"),
@@ -213,18 +217,20 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("imageUrl"),
         payload.get("image_url"),
     )
-    if item_image_url and not item_image_url.lower().startswith(("http://", "https://")):
+    if item_image_url and not item_image_url.lower().startswith(
+        ("http://", "https://")
+    ):
         item_image_url = None
-    
+
     currency: str | None = _first_str(
         data.get("currency"),
         payload.get("currency"),
         item_obj.get("currency"),
     )
-    
+
     amount_cents: int | None = None
     amount_usd: float | None = None
-    
+
     raw_cents = _first(
         data.get("amountCents"),
         data.get("amount_cents"),
@@ -235,14 +241,14 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
         item_obj.get("amountCents"),
         item_obj.get("amount_cents"),
     )
-    
+
     if raw_cents is not None:
         try:
             amount_cents = int(raw_cents)
             amount_usd = amount_cents / 100.0
         except (TypeError, ValueError):
             pass
-    
+
     if amount_usd is None:
         raw_amount = _first(
             data.get("amount"),
@@ -261,7 +267,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
             item_obj.get("priceUsd"),
             item_obj.get("price_usd"),
         )
-    
+
         if raw_amount is not None:
             try:
                 if isinstance(raw_amount, str):
@@ -272,7 +278,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
                         numeric_amount = None
                 else:
                     numeric_amount = float(raw_amount)
-    
+
                 if numeric_amount is not None:
                     # Throne docs: contribution_purchased.data.amount is always
                     # in minor units (cents), regardless of currency.
@@ -286,7 +292,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
                             amount_cents = int(round(numeric_amount * 100))
             except (TypeError, ValueError):
                 pass
-    
+
     is_private: bool = _truthy(
         data.get("isPrivate"),
         data.get("is_private"),
@@ -299,7 +305,7 @@ def _extract_gift_fields(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if is_private:
         amount_usd = None
-    
+
     return {
         "event_id": event_id,
         "event_type": event_type,
@@ -363,7 +369,10 @@ class ThroneWebhookServer:
                 "Webhook signature verification is enabled but no public key is set. "
                 "All webhook requests will be rejected with 401."
             )
-        if not config.throne_webhook_require_signature and not config.throne_public_key_pem:
+        if (
+            not config.throne_webhook_require_signature
+            and not config.throne_public_key_pem
+        ):
             log.warning(
                 "⚠️  THRONE_WEBHOOK_REQUIRE_SIGNATURE=false and THRONE_PUBLIC_KEY_PEM is unset. "
                 "Webhook signature verification is DISABLED. This is insecure — for local testing only."
@@ -372,9 +381,13 @@ class ThroneWebhookServer:
     async def start(self) -> None:
         app = web.Application()
         app.router.add_get("/health", self._handle_health)
-        app.router.add_post("/throne/webhook/{creator_id}/{secret}", self._handle_webhook)
+        app.router.add_post(
+            "/throne/webhook/{creator_id}/{secret}", self._handle_webhook
+        )
         app.router.add_post("/admin/maintenance", self._handle_admin_maintenance)
-        app.router.add_post("/admin/leaderboard/sync", self._handle_admin_leaderboard_sync)
+        app.router.add_post(
+            "/admin/leaderboard/sync", self._handle_admin_leaderboard_sync
+        )
         app.router.add_post("/admin/broadcast", self._handle_admin_broadcast)
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
@@ -440,12 +453,18 @@ class ThroneWebhookServer:
             return web.Response(status=401, text="Timestamp out of range")
 
         # 4 & 5. Signature verification.
-        sig_hex = request.headers.get(config.throne_webhook_signature_header, "").strip()
+        sig_hex = request.headers.get(
+            config.throne_webhook_signature_header, ""
+        ).strip()
 
         if config.throne_webhook_require_signature:
             if not config.throne_public_key_pem:
-                log.error("Webhook rejected: signature required but THRONE_PUBLIC_KEY_PEM not set.")
-                return web.Response(status=401, text="Signature verification not configured")
+                log.error(
+                    "Webhook rejected: signature required but THRONE_PUBLIC_KEY_PEM not set."
+                )
+                return web.Response(
+                    status=401, text="Signature verification not configured"
+                )
 
             # Build the message to verify based on configured format.
             fmt = config.throne_webhook_signed_message_format
@@ -457,8 +476,13 @@ class ThroneWebhookServer:
                 # "body_only" or any unknown value — use raw body.
                 message_to_verify = raw_body
 
-            if not _verify_ed25519(config.throne_public_key_pem, sig_hex, message_to_verify):
-                log.warning("Webhook rejected: Ed25519 signature verification failed for creator %s.", creator_id)
+            if not _verify_ed25519(
+                config.throne_public_key_pem, sig_hex, message_to_verify
+            ):
+                log.warning(
+                    "Webhook rejected: Ed25519 signature verification failed for creator %s.",
+                    creator_id,
+                )
                 return web.Response(status=401, text="Invalid signature")
 
         # 6. Look up throne_creators row by creator_id.
@@ -507,8 +531,12 @@ class ThroneWebhookServer:
             "item_purchased",
         }
         if event_type and event_type not in accepted_types:
-            log.debug("Webhook: ignoring event_type=%r for creator %s", event_type, creator_id)
-            return web.json_response({"ok": True, "ignored": True, "event_type": event_type})
+            log.debug(
+                "Webhook: ignoring event_type=%r for creator %s", event_type, creator_id
+            )
+            return web.json_response(
+                {"ok": True, "ignored": True, "event_type": event_type}
+            )
 
         event_id: str | None = fields["event_id"]
 
@@ -532,7 +560,9 @@ class ThroneWebhookServer:
         if event_type == "gift_purchased":
             amount_usd = None
             is_private = True
-            cached_items = await self.database.get_throne_wishlist_items(creator_id=creator_id)
+            cached_items = await self.database.get_throne_wishlist_items(
+                creator_id=creator_id
+            )
             cached_price = match_wishlist_item_price(
                 [
                     WishlistItemRecord(
@@ -637,7 +667,12 @@ class ThroneWebhookServer:
 
         # 13. Return success.
         return web.json_response(
-            {"ok": True, "inserted": True, "send_id": send_id, "send_public_id": send_public_id}
+            {
+                "ok": True,
+                "inserted": True,
+                "send_id": send_id,
+                "send_public_id": send_public_id,
+            }
         )
 
     # ── Admin endpoints ─────────────────────────────────────────────────────
@@ -727,13 +762,17 @@ class ThroneWebhookServer:
 
         return web.json_response({"ok": True, "maintenance_mode": active})
 
-    async def _handle_admin_leaderboard_sync(self, request: web.Request) -> web.Response:
+    async def _handle_admin_leaderboard_sync(
+        self, request: web.Request
+    ) -> web.Response:
         if not self._is_local_request(request):
             return web.json_response({"ok": False, "error": "forbidden"}, status=403)
 
         event_cog = self.bot.get_cog("RobEventCog")
         if event_cog is None:
-            return web.json_response({"ok": False, "error": "event cog unavailable"}, status=503)
+            return web.json_response(
+                {"ok": False, "error": "event cog unavailable"}, status=503
+            )
 
         try:
             await event_cog.sync_leaderboard_channel()
@@ -751,24 +790,32 @@ class ThroneWebhookServer:
         except (json.JSONDecodeError, ValueError):
             return web.json_response({"ok": False, "error": "invalid json"}, status=400)
         if not isinstance(payload, dict):
-            return web.json_response({"ok": False, "error": "invalid payload"}, status=400)
+            return web.json_response(
+                {"ok": False, "error": "invalid payload"}, status=400
+            )
 
         target = str(payload.get("target") or "").strip().lower()
         dm_user_id: int | None = None
         channel_id: int | None = None
         if target.startswith("user:"):
-            raw_uid = target[len("user:"):]
+            raw_uid = target[len("user:") :]
             if not raw_uid.isdigit():
                 return web.json_response(
-                    {"ok": False, "error": "user target must be 'user:<discord_user_id>' with a numeric ID"},
+                    {
+                        "ok": False,
+                        "error": "user target must be 'user:<discord_user_id>' with a numeric ID",
+                    },
                     status=400,
                 )
             dm_user_id = int(raw_uid)
         elif target.startswith("channel:"):
-            raw_channel_id = target[len("channel:"):]
+            raw_channel_id = target[len("channel:") :]
             if not raw_channel_id.isdigit():
                 return web.json_response(
-                    {"ok": False, "error": "channel target must be 'channel:<discord_channel_id>' with a numeric ID"},
+                    {
+                        "ok": False,
+                        "error": "channel target must be 'channel:<discord_channel_id>' with a numeric ID",
+                    },
                     status=400,
                 )
             channel_id = int(raw_channel_id)
@@ -788,7 +835,9 @@ class ThroneWebhookServer:
             )
         raw_url = payload.get("url")
         action_url = str(raw_url).strip() if raw_url else None
-        if action_url and not (action_url.startswith("http://") or action_url.startswith("https://")):
+        if action_url and not (
+            action_url.startswith("http://") or action_url.startswith("https://")
+        ):
             return web.json_response(
                 {"ok": False, "error": "url must be http(s)"}, status=400
             )
@@ -825,7 +874,12 @@ class ThroneWebhookServer:
                     {"ok": False, "error": "discord delivery failed"}, status=502
                 )
             return web.json_response(
-                {"ok": True, "target": "owner", "delivered_count": 1, "failed_user_ids": []}
+                {
+                    "ok": True,
+                    "target": "owner",
+                    "delivered_count": 1,
+                    "failed_user_ids": [],
+                }
             )
 
         if dm_user_id is not None:
@@ -835,22 +889,32 @@ class ThroneWebhookServer:
                     user = await self.bot.fetch_user(dm_user_id)
                 except discord.NotFound:
                     return web.json_response(
-                        {"ok": False, "error": f"user {dm_user_id} not found"}, status=404
+                        {"ok": False, "error": f"user {dm_user_id} not found"},
+                        status=404,
                     )
                 except discord.HTTPException:
-                    log.exception("Failed to fetch user %s for direct broadcast.", dm_user_id)
+                    log.exception(
+                        "Failed to fetch user %s for direct broadcast.", dm_user_id
+                    )
                     return web.json_response(
                         {"ok": False, "error": "discord lookup failed"}, status=502
                     )
             try:
                 await _send(user)
             except discord.HTTPException:
-                log.exception("Failed to deliver direct broadcast to user %s.", dm_user_id)
+                log.exception(
+                    "Failed to deliver direct broadcast to user %s.", dm_user_id
+                )
                 return web.json_response(
                     {"ok": False, "error": "discord delivery failed"}, status=502
                 )
             return web.json_response(
-                {"ok": True, "target": target, "delivered_count": 1, "failed_user_ids": []}
+                {
+                    "ok": True,
+                    "target": target,
+                    "delivered_count": 1,
+                    "failed_user_ids": [],
+                }
             )
 
         if channel_id is not None:
@@ -860,20 +924,30 @@ class ThroneWebhookServer:
                     channel = await self.bot.fetch_channel(channel_id)
                 except discord.NotFound:
                     return web.json_response(
-                        {"ok": False, "error": f"channel {channel_id} not found"}, status=404
+                        {"ok": False, "error": f"channel {channel_id} not found"},
+                        status=404,
                     )
                 except discord.Forbidden:
                     return web.json_response(
-                        {"ok": False, "error": f"missing access to channel {channel_id}"}, status=403
+                        {
+                            "ok": False,
+                            "error": f"missing access to channel {channel_id}",
+                        },
+                        status=403,
                     )
                 except discord.HTTPException:
-                    log.exception("Failed to fetch channel %s for direct broadcast.", channel_id)
+                    log.exception(
+                        "Failed to fetch channel %s for direct broadcast.", channel_id
+                    )
                     return web.json_response(
                         {"ok": False, "error": "discord lookup failed"}, status=502
                     )
             if not hasattr(channel, "send"):
                 return web.json_response(
-                    {"ok": False, "error": f"channel {channel_id} does not support sending messages"},
+                    {
+                        "ok": False,
+                        "error": f"channel {channel_id} does not support sending messages",
+                    },
                     status=400,
                 )
             try:
@@ -883,16 +957,26 @@ class ThroneWebhookServer:
                     await channel.send(view=_view_factory())  # type: ignore[attr-defined]
             except discord.Forbidden:
                 return web.json_response(
-                    {"ok": False, "error": f"missing permission to send to channel {channel_id}"},
+                    {
+                        "ok": False,
+                        "error": f"missing permission to send to channel {channel_id}",
+                    },
                     status=403,
                 )
             except discord.HTTPException:
-                log.exception("Failed to deliver direct broadcast to channel %s.", channel_id)
+                log.exception(
+                    "Failed to deliver direct broadcast to channel %s.", channel_id
+                )
                 return web.json_response(
                     {"ok": False, "error": "discord delivery failed"}, status=502
                 )
             return web.json_response(
-                {"ok": True, "target": target, "delivered_count": 1, "failed_user_ids": []}
+                {
+                    "ok": True,
+                    "target": target,
+                    "delivered_count": 1,
+                    "failed_user_ids": [],
+                }
             )
 
         user_ids: set[int] = set()

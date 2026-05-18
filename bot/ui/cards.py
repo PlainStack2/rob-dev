@@ -86,7 +86,11 @@ def _link_lines(*urls: str | None) -> list[str]:
 
 def _selected_colour_label(profile_color: int) -> str:
     return next(
-        (label for value, _emoji, label in PROFILE_COLOR_PRESETS if value == profile_color),
+        (
+            label
+            for value, _emoji, label in PROFILE_COLOR_PRESETS
+            if value == profile_color
+        ),
         f"#{profile_color:06X}",
     )
 
@@ -195,22 +199,17 @@ def verification_intro_card(notice: str | None = None) -> discord.ui.Container:
     sections: list[discord.ui.Item] = [
         separator(),
         text_block(
-            f"**{copy.step_label(1, 3)}**\n"
-            "Send one valid link or one clear screenshot."
+            f"**{copy.step_label(1, 3)}**\nSend one valid link or one clear screenshot."
         ),
         text_block(
-            "**What happens next**\n"
-            "Rob asks your role. Staff get the paperwork."
+            "**What happens next**\nRob asks your role. Staff get the paperwork."
         ),
     ]
     if notice:
         sections.extend(
             [
                 separator(),
-                text_block(
-                    "**That last submission did not quite land**\n"
-                    f"{notice}"
-                ),
+                text_block(f"**That last submission did not quite land**\n{notice}"),
             ]
         )
     return make_container(
@@ -222,14 +221,13 @@ def verification_intro_card(notice: str | None = None) -> discord.ui.Container:
     )
 
 
-def verification_submitted_card(selected_role: str | None = None) -> discord.ui.Container:
+def verification_submitted_card(
+    selected_role: str | None = None,
+) -> discord.ui.Container:
     extra = f"\n\n**Selected role**\n{selected_role}" if selected_role else ""
     return make_container(
         "🧾 Verification Submitted",
-        (
-            "Request sent. Staff have the buttons now."
-            f"{extra}"
-        ),
+        (f"Request sent. Staff have the buttons now.{extra}"),
         footer="Now we wait for the button people.",
         accent_color=ROB_BLUE,
     )
@@ -287,14 +285,21 @@ def staff_review_card(
         separator(),
         action_section("Approve this verification request.", approve_button),
         action_section("Deny because the user is under 18.", deny_underage_button),
-        action_section("Deny because the service or proof is not valid.", deny_invalid_button),
+        action_section(
+            "Deny because the service or proof is not valid.", deny_invalid_button
+        ),
     ]
     if link_button is not None:
-        sections.insert(6, action_section("Open the submitted link in a browser.", link_button))
+        sections.insert(
+            6, action_section("Open the submitted link in a browser.", link_button)
+        )
 
     container_items: list[discord.ui.Item]
     if avatar_url:
-        container_items = [thumbnail_section("## 🛂 Verification Review", avatar_url), *sections]
+        container_items = [
+            thumbnail_section("## 🛂 Verification Review", avatar_url),
+            *sections,
+        ]
         return discord.ui.Container(*container_items, accent_color=ROB_PURPLE)
 
     return make_container(
@@ -334,13 +339,13 @@ def build_help_pages(
         (
             "General",
             ROB_BLUE.value,
-                copy.HELP_INTRO,
-                (
-                    ("/help", "Open the manual."),
-                    ("/register action:domme", "Register as a Domme."),
-                    ("/register action:sub", "Register as a Sub."),
-                ),
+            copy.HELP_INTRO,
+            (
+                ("/help", "Open the manual."),
+                ("/register action:domme", "Register as a Domme."),
+                ("/register action:sub", "Register as a Sub."),
             ),
+        ),
     ]
     if is_domme:
         pages.append(
@@ -378,7 +383,10 @@ def build_help_pages(
                     (
                         ("!setup_verification", "Post the verification panel."),
                         ("!verify_status <user>", "Check one verification record."),
-                        ("!verify_cleanup", "Show users still holding the unverified role."),
+                        (
+                            "!verify_cleanup",
+                            "Show users still holding the unverified role.",
+                        ),
                     ),
                 ),
                 (
@@ -387,10 +395,22 @@ def build_help_pages(
                     "Admin bits. Button wrench included.",
                     (
                         ("!throne refresh", "Show the webhook-only tracking reminder."),
-                        ("!throne status", "Show Throne registration and webhook tracking health."),
-                        ("!throne list", "List registered Throne users and webhook status."),
-                        ("!throne search <@user|id>", "Show one Throne creator record."),
-                        ("!throne webhook refresh <@user|id>", "Dev-only webhook secret rotation + DM."),
+                        (
+                            "!throne status",
+                            "Show Throne registration and webhook tracking health.",
+                        ),
+                        (
+                            "!throne list",
+                            "List registered Throne users and webhook status.",
+                        ),
+                        (
+                            "!throne search <@user|id>",
+                            "Show one Throne creator record.",
+                        ),
+                        (
+                            "!throne webhook refresh <@user|id>",
+                            "Dev-only webhook secret rotation + DM.",
+                        ),
                         ("!event status", "Show loaded event config and current mode."),
                         ("!event reload", "Reload `config/events.json`."),
                         ("/reaction_role_setup", "Create a reaction-role message."),
@@ -411,9 +431,14 @@ def help_page_card(
     page_index = max(0, min(page_index, len(pages) - 1))
     section_name, colour_value, blurb, entries = pages[page_index]
 
-    sections: list[discord.ui.Item] = [separator(), text_block(f"**{section_name}**\n{blurb}")]
+    sections: list[discord.ui.Item] = [
+        separator(),
+        text_block(f"**{section_name}**\n{blurb}"),
+    ]
     for name, description in entries:
-        sections.extend([separator(visible=False), text_block(f"**{name}**\n{description}")])
+        sections.extend(
+            [separator(visible=False), text_block(f"**{name}**\n{description}")]
+        )
 
     return make_container(
         "🧭 Rob Help",
@@ -450,9 +475,7 @@ def profile_setup_step_card(
 def domme_setup_intro_card() -> discord.ui.Container:
     return make_container(
         "💋 Domme Profile Setup",
-        (
-            "Rob is building your card.\n\nSkip whatever you do not want to share."
-        ),
+        ("Rob is building your card.\n\nSkip whatever you do not want to share."),
         sections=[
             separator(),
             text_block(f"**{copy.step_label(1, 6)}**\nStart with the basics."),
@@ -462,7 +485,9 @@ def domme_setup_intro_card() -> discord.ui.Container:
     )
 
 
-def domme_setup_name_card(*, name: str | None, honorific: str | None) -> discord.ui.Container:
+def domme_setup_name_card(
+    *, name: str | None, honorific: str | None
+) -> discord.ui.Container:
     return profile_setup_step_card(
         title="💋 Name & Honorific",
         body="How should people address you?",
@@ -513,8 +538,12 @@ def domme_setup_payments_card(
     content_link3: str | None,
     content_link4: str | None,
 ) -> discord.ui.Container:
-    payment_lines = _link_lines(payment_link1, payment_link2, payment_link3, payment_link4)
-    content_lines = _link_lines(content_link1, content_link2, content_link3, content_link4)
+    payment_lines = _link_lines(
+        payment_link1, payment_link2, payment_link3, payment_link4
+    )
+    content_lines = _link_lines(
+        content_link1, content_link2, content_link3, content_link4
+    )
     return profile_setup_step_card(
         title="🔗 Links",
         body="Add your payment and content links.",
@@ -574,8 +603,12 @@ def domme_setup_review_card(
     kinks: str | None,
     limits: str | None,
 ) -> discord.ui.Container:
-    payment_lines = _link_lines(payment_link1, payment_link2, payment_link3, payment_link4)
-    content_lines = _link_lines(content_link1, content_link2, content_link3, content_link4)
+    payment_lines = _link_lines(
+        payment_link1, payment_link2, payment_link3, payment_link4
+    )
+    content_lines = _link_lines(
+        content_link1, content_link2, content_link3, content_link4
+    )
     return profile_setup_step_card(
         title="✅ Review Your Domme Profile",
         body="Last look before Rob files it.",
@@ -592,7 +625,10 @@ def domme_setup_review_card(
             ("Tribute Link", _profile_value(tribute_link)),
             ("Payment Links", "\n".join(payment_lines) if payment_lines else None),
             ("Content Links", "\n".join(content_lines) if content_lines else None),
-            ("Throne Tracking", "Enabled" if throne_tracking_enabled else "Not enabled"),
+            (
+                "Throne Tracking",
+                "Enabled" if throne_tracking_enabled else "Not enabled",
+            ),
             ("Profile Colour", _selected_colour_label(profile_color)),
         ],
         footer="If it looks right, hit save.",
@@ -624,9 +660,7 @@ def domme_setup_cancelled_card() -> discord.ui.Container:
 def sub_setup_intro_card() -> discord.ui.Container:
     return make_container(
         "🪢 Sub Profile Setup",
-        (
-            "Rob is linking your Throne name and basic profile bits."
-        ),
+        ("Rob is linking your Throne name and basic profile bits."),
         sections=[
             separator(),
             text_block(f"**{copy.step_label(1, 6)}**\nStart with your Throne name."),
@@ -789,7 +823,7 @@ def import_ids_upload_card(button: discord.ui.Button) -> discord.ui.Container:
             separator(),
             text_block(
                 "**Accepted formats**\n"
-                "`JSON` — `{\"GUILD_ID\": 123, ...}`\n"
+                '`JSON` — `{"GUILD_ID": 123, ...}`\n'
                 "`Text` — `GUILD_ID=123` or `guild_id: 123`"
             ),
             action_section("Upload the file.", button),
@@ -799,7 +833,9 @@ def import_ids_upload_card(button: discord.ui.Button) -> discord.ui.Container:
     )
 
 
-def import_ids_confirm_card(parsed: dict[str, int], warnings: list[str]) -> discord.ui.Container:
+def import_ids_confirm_card(
+    parsed: dict[str, int], warnings: list[str]
+) -> discord.ui.Container:
     field_labels = {
         "GUILD_ID": "Guild",
         "REGISTRATION_CHANNEL_ID": "Registration Channel",
@@ -813,12 +849,16 @@ def import_ids_confirm_card(parsed: dict[str, int], warnings: list[str]) -> disc
     sections: list[discord.ui.Item] = [separator()]
     for key, value in parsed.items():
         label = field_labels.get(key, key)
-        sections.extend([text_block(f"**{label}**\n`{value}`"), separator(visible=False)])
+        sections.extend(
+            [text_block(f"**{label}**\n`{value}`"), separator(visible=False)]
+        )
     if warnings:
         sections.extend(
             [
                 separator(),
-                text_block("**Warnings**\n" + "\n".join(f"• {warning}" for warning in warnings)),
+                text_block(
+                    "**Warnings**\n" + "\n".join(f"• {warning}" for warning in warnings)
+                ),
             ]
         )
     return make_container(
@@ -965,7 +1005,9 @@ def domme_profile_card(
         profile.get("payment_link4"),
     )
     if payment_lines:
-        sections.extend([separator(), text_block("**Payment Links**\n" + "\n".join(payment_lines))])
+        sections.extend(
+            [separator(), text_block("**Payment Links**\n" + "\n".join(payment_lines))]
+        )
 
     content_lines = _link_lines(
         profile.get("content_link1"),
@@ -974,7 +1016,9 @@ def domme_profile_card(
         profile.get("content_link4"),
     )
     if content_lines:
-        sections.extend([separator(), text_block("**Content Links**\n" + "\n".join(content_lines))])
+        sections.extend(
+            [separator(), text_block("**Content Links**\n" + "\n".join(content_lines))]
+        )
 
     return make_container(
         f"✨ {display_name}",
@@ -1007,7 +1051,11 @@ def sub_profile_card(
     else:
         sections.append(text_block("\n".join(header_lines)))
 
-    for label, key in (("Kinks", "kinks"), ("Limits", "limits"), ("Owned By", "owned_by_label")):
+    for label, key in (
+        ("Kinks", "kinks"),
+        ("Limits", "limits"),
+        ("Owned By", "owned_by_label"),
+    ):
         block = _line_block(label, _profile_value(profile.get(key)))
         if block:
             sections.extend([separator(visible=False), block])

@@ -10,7 +10,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
 
-from bot.ui.theme import ROB_BLUE, ROB_GOLD, ROB_GREEN, ROB_GREY, ROB_PINK, ROB_PURPLE, ROB_RED
+from bot.ui.theme import (
+    ROB_BLUE,
+    ROB_GOLD,
+    ROB_GREEN,
+    ROB_GREY,
+    ROB_PINK,
+    ROB_PURPLE,
+    ROB_RED,
+)
 
 log = logging.getLogger(__name__)
 
@@ -85,17 +93,27 @@ def load_events_config(path: Path) -> EventsConfig:
     )
 
     if not path.exists():
-        log.warning("Events config %s is missing. Rob will use the default live theme only.", path)
+        log.warning(
+            "Events config %s is missing. Rob will use the default live theme only.",
+            path,
+        )
         return EventsConfig(source_path=path, default_theme=default_theme, events=())
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("Could not load events config %s: %s. Rob will use the default theme only.", path, exc)
+        log.warning(
+            "Could not load events config %s: %s. Rob will use the default theme only.",
+            path,
+            exc,
+        )
         return EventsConfig(source_path=path, default_theme=default_theme, events=())
 
     if not isinstance(payload, dict):
-        log.warning("Events config %s is not a JSON object. Rob will use the default theme only.", path)
+        log.warning(
+            "Events config %s is not a JSON object. Rob will use the default theme only.",
+            path,
+        )
         return EventsConfig(source_path=path, default_theme=default_theme, events=())
 
     parsed_default = _parse_theme(
@@ -144,9 +162,14 @@ def _parse_event(raw: Any, *, fallback: EventTheme) -> ConfiguredEvent | None:
     )
 
     if enabled and (start_at is None or end_at is None):
-        log.warning("Event %s is enabled but missing start_at or end_at. Rob will keep it inactive.", key)
+        log.warning(
+            "Event %s is enabled but missing start_at or end_at. Rob will keep it inactive.",
+            key,
+        )
     elif start_at is not None and end_at is not None and end_at <= start_at:
-        log.warning("Event %s has end_at earlier than start_at. Rob will keep it inactive.", key)
+        log.warning(
+            "Event %s has end_at earlier than start_at. Rob will keep it inactive.", key
+        )
         start_at = None
         end_at = None
 
@@ -175,10 +198,16 @@ def _parse_theme(
     accent_name = str(raw.get("accent_color") or "").strip().casefold()
     accent_color = _COLOR_MAP.get(accent_name, fallback.accent_color)
     if accent_name and accent_name not in _COLOR_MAP:
-        log.warning("Unknown accent_color %r for event %s. Falling back to purple.", accent_name, key)
+        log.warning(
+            "Unknown accent_color %r for event %s. Falling back to purple.",
+            accent_name,
+            key,
+        )
         accent_color = ROB_PURPLE
 
-    leaderboard_title = str(raw.get("leaderboard_title") or name or fallback.leaderboard_title).strip()
+    leaderboard_title = str(
+        raw.get("leaderboard_title") or name or fallback.leaderboard_title
+    ).strip()
     send_title = str(raw.get("send_title") or fallback.send_title).strip()
 
     return EventTheme(
@@ -191,11 +220,15 @@ def _parse_theme(
     )
 
 
-def _parse_event_datetime(value: Any, *, timezone_name: str, label: str) -> datetime | None:
+def _parse_event_datetime(
+    value: Any, *, timezone_name: str, label: str
+) -> datetime | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        log.warning("Event config value %s should be a string or null, not %r.", label, value)
+        log.warning(
+            "Event config value %s should be a string or null, not %r.", label, value
+        )
         return None
 
     raw = value.strip()

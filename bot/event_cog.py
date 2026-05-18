@@ -1,4 +1,5 @@
 """Event and leaderboard runtime for Rob the Bot."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +18,20 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from bot.config import BotConfig
-from bot.database import Database, EventSend, EventState, SendSummary, ThroneWishlistItem
+from bot.database import (
+    Database,
+    EventSend,
+    EventState,
+    SendSummary,
+    ThroneWishlistItem,
+)
 from bot.deny import send_deny_response
-from bot.event_config import ConfiguredEvent, EventTheme, EventsConfig, load_events_config
+from bot.event_config import (
+    ConfiguredEvent,
+    EventTheme,
+    EventsConfig,
+    load_events_config,
+)
 from bot.event_views import (
     DommeSignupModal,
     EventStatusView,
@@ -46,7 +58,15 @@ log = logging.getLogger(__name__)
 
 _RESERVED_SUB_NAMES = {"anonymous", "unclaimed send", "unclaimed"}
 _MANUAL_SEND_SUB_FALLBACK = "Sub with no nickname claimed"
-_MANUAL_SEND_METHODS = ("cashapp", "venmo", "paypal", "onlyfans", "loyalfans", "youpay", "other")
+_MANUAL_SEND_METHODS = (
+    "cashapp",
+    "venmo",
+    "paypal",
+    "onlyfans",
+    "loyalfans",
+    "youpay",
+    "other",
+)
 _REQUEST_SEND_METHODS = _MANUAL_SEND_METHODS + ("throne",)
 _SEND_REQUEST_RATE_LIMIT = 3
 _SEND_REQUEST_ADD_HINT_TEMPLATE = (
@@ -96,8 +116,7 @@ _RULE_RESPONSES: dict[str, str] = {
         "Respect everyone and keep drama out of the server."
     ),
     "spam": (
-        "## Rule 4: No spamming\n\n"
-        "Spamming anything results in an immediate ban."
+        "## Rule 4: No spamming\n\nSpamming anything results in an immediate ban."
     ),
     "catfish": (
         "## Rule 5: NO CATFISHING 🎣\n\n"
@@ -105,10 +124,7 @@ _RULE_RESPONSES: dict[str, str] = {
         "and subreddit and banned.\n"
         "r/VIBsofFindom: https://www.reddit.com/r/VIBsofFindom/s/NCljul5MW9"
     ),
-    "ai": (
-        "## Rule 6: NO AI\n\n"
-        "No AI content allowed."
-    ),
+    "ai": ("## Rule 6: NO AI\n\nNo AI content allowed."),
     "school": (
         "## Rule 7: You must be out of high school\n\n"
         "You must be out of high school to be here."
@@ -118,8 +134,7 @@ _RULE_RESPONSES: dict[str, str] = {
         "Do not post on someone else's intro. One warning before ban."
     ),
     "oneintro": (
-        "## Rule 9: Only post your intro once\n\n"
-        "Only post your intro one time."
+        "## Rule 9: Only post your intro once\n\nOnly post your intro one time."
     ),
     "verify": (
         "## Rule 10: Do not interact with unverified members\n\n"
@@ -172,7 +187,9 @@ _RULE_ALIASES: dict[str, str] = {
 
 
 def _normalize_rule_topic(value: str) -> str:
-    return "".join(character for character in value.strip().lower() if character.isalnum())
+    return "".join(
+        character for character in value.strip().lower() if character.isalnum()
+    )
 
 
 _RULE_TOPIC_LOOKUP: dict[str, str] = {
@@ -199,7 +216,9 @@ class SendRequestDecisionView(discord.ui.View):
     async def _ensure_owner(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.target_domme_id:
             return True
-        await interaction.response.send_message("That button is not for you.", ephemeral=True)
+        await interaction.response.send_message(
+            "That button is not for you.", ephemeral=True
+        )
         return False
 
     @discord.ui.button(label="Approve & Log", style=discord.ButtonStyle.success)
@@ -213,7 +232,9 @@ class SendRequestDecisionView(discord.ui.View):
 
         request = await self.cog.database.get_send_request(request_id=self.request_id)
         if request is None:
-            await interaction.response.edit_message(content="Request not found.", view=None)
+            await interaction.response.edit_message(
+                content="Request not found.", view=None
+            )
             return
         if request.status != "pending":
             await interaction.response.edit_message(
@@ -224,7 +245,9 @@ class SendRequestDecisionView(discord.ui.View):
 
         tracker_cog = self.cog.bot.get_cog("ThroneTrackerCog")
         if tracker_cog is None:
-            await interaction.response.send_message("Rob lost the send logger. Try again in a minute.", ephemeral=True)
+            await interaction.response.send_message(
+                "Rob lost the send logger. Try again in a minute.", ephemeral=True
+            )
             return
 
         context = await self.cog.get_runtime_context()
@@ -241,12 +264,18 @@ class SendRequestDecisionView(discord.ui.View):
             event_key=event_key,
         )
         if result is None:
-            await interaction.response.send_message("That send could not be logged right now.", ephemeral=True)
+            await interaction.response.send_message(
+                "That send could not be logged right now.", ephemeral=True
+            )
             return
 
         _, send_public_id = result
-        await self.cog.database.resolve_send_request(request_id=request.id, status="approved")
-        await interaction.response.edit_message(content=f"✅ Logged as send #{send_public_id}.", view=None)
+        await self.cog.database.resolve_send_request(
+            request_id=request.id, status="approved"
+        )
+        await interaction.response.edit_message(
+            content=f"✅ Logged as send #{send_public_id}.", view=None
+        )
 
     @discord.ui.button(label="Ignore", style=discord.ButtonStyle.secondary)
     async def ignore(
@@ -259,7 +288,9 @@ class SendRequestDecisionView(discord.ui.View):
 
         request = await self.cog.database.get_send_request(request_id=self.request_id)
         if request is not None and request.status == "pending":
-            await self.cog.database.resolve_send_request(request_id=request.id, status="ignored")
+            await self.cog.database.resolve_send_request(
+                request_id=request.id, status="ignored"
+            )
         await interaction.response.edit_message(content="❌ Ignored.", view=None)
 
 
@@ -272,7 +303,11 @@ class EventRuntimeContext:
 
     @property
     def is_event_active(self) -> bool:
-        return self.active_event is not None and self.active_state is not None and self.active_state.is_active
+        return (
+            self.active_event is not None
+            and self.active_state is not None
+            and self.active_state.is_active
+        )
 
     @property
     def event_key(self) -> str | None:
@@ -296,7 +331,9 @@ class CountingState:
 
 
 class RobEventCog(commands.Cog):
-    count_group = app_commands.Group(name="count", description="Counting channel tools.")
+    count_group = app_commands.Group(
+        name="count", description="Counting channel tools."
+    )
 
     def __init__(
         self,
@@ -312,8 +349,12 @@ class RobEventCog(commands.Cog):
         self._lifecycle_lock = asyncio.Lock()
         self._overlap_warning_keys: tuple[str, ...] | None = None
         self._warned_runtime_targets: set[str] = set()
-        self._processed_warn_message_ids: deque[int] = deque(maxlen=_MAX_PROCESSED_WARN_MESSAGES)
-        self.events_config: EventsConfig = load_events_config(self.config.events_config_path)
+        self._processed_warn_message_ids: deque[int] = deque(
+            maxlen=_MAX_PROCESSED_WARN_MESSAGES
+        )
+        self.events_config: EventsConfig = load_events_config(
+            self.config.events_config_path
+        )
         self.status_loop.start()
         self.event_lifecycle_loop.start()
 
@@ -368,7 +409,10 @@ class RobEventCog(commands.Cog):
 
     async def _log_startup_configuration_warnings(self) -> None:
         if not self.config.guild_id:
-            self._warn_once("guild_id", "GUILD_ID is missing in bot/channels.py. Rob cannot resolve guild resources yet.")
+            self._warn_once(
+                "guild_id",
+                "GUILD_ID is missing in bot/channels.py. Rob cannot resolve guild resources yet.",
+            )
             return
 
         guild = self.bot.get_guild(self.config.guild_id)
@@ -391,7 +435,12 @@ class RobEventCog(commands.Cog):
                 continue
             channel = guild.get_channel(channel_id)
             if not isinstance(channel, discord.TextChannel):
-                self._warn_once(name, "Configured channel id %s for %s was not found as a text channel.", channel_id, name)
+                self._warn_once(
+                    name,
+                    "Configured channel id %s for %s was not found as a text channel.",
+                    channel_id,
+                    name,
+                )
 
         role_targets = {
             "moderation_role_id": self.config.moderation_role_id,
@@ -403,7 +452,13 @@ class RobEventCog(commands.Cog):
                 self._warn_once(name, "%s is missing in bot/channels.py.", name.upper())
                 continue
             if guild.get_role(role_id) is None:
-                self._warn_once(name, "Configured role id %s for %s was not found in guild %s.", role_id, name, guild.id)
+                self._warn_once(
+                    name,
+                    "Configured role id %s for %s was not found in guild %s.",
+                    role_id,
+                    name,
+                    guild.id,
+                )
 
     async def _notify_owner_on_start(self) -> None:
         try:
@@ -440,14 +495,18 @@ class RobEventCog(commands.Cog):
     async def _before_event_lifecycle_loop(self) -> None:
         await self.bot.wait_until_ready()
 
-    async def ensure_event_state_current(self, *, sync_leaderboard: bool = True) -> EventRuntimeContext:
+    async def ensure_event_state_current(
+        self, *, sync_leaderboard: bool = True
+    ) -> EventRuntimeContext:
         async with self._lifecycle_lock:
             now = datetime.now(timezone.utc)
             active_event = self._active_configured_event(now)
             active_state = await self.database.get_active_event_state()
             lifecycle_changed = False
 
-            if active_state is not None and (active_event is None or active_state.event_key != active_event.key):
+            if active_state is not None and (
+                active_event is None or active_state.event_key != active_event.key
+            ):
                 active_state = await self.database.end_event(
                     event_key=active_state.event_key,
                     ended_by=None,
@@ -457,8 +516,16 @@ class RobEventCog(commands.Cog):
                 active_state = None
 
             if active_event is not None:
-                start_at = active_event.start_at.isoformat() if active_event.start_at is not None else None
-                end_at = active_event.end_at.isoformat() if active_event.end_at is not None else None
+                start_at = (
+                    active_event.start_at.isoformat()
+                    if active_event.start_at is not None
+                    else None
+                )
+                end_at = (
+                    active_event.end_at.isoformat()
+                    if active_event.end_at is not None
+                    else None
+                )
                 if (
                     active_state is None
                     or active_state.event_key != active_event.key
@@ -479,7 +546,9 @@ class RobEventCog(commands.Cog):
             context = EventRuntimeContext(
                 active_state=active_state,
                 active_event=active_event,
-                theme=active_event.theme if active_event is not None else self.events_config.default_theme,
+                theme=active_event.theme
+                if active_event is not None
+                else self.events_config.default_theme,
                 source_path=self.events_config.source_path,
             )
 
@@ -503,14 +572,20 @@ class RobEventCog(commands.Cog):
         *,
         signup_type: str,
     ) -> str | None:
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        if interaction.guild is None or not isinstance(
+            interaction.user, discord.Member
+        ):
             return "Server only."
         member = interaction.user
         if self._member_has_role(member, self.config.event_ban_role_id):
             return "Nope. You're blocked from this event."
-        if signup_type == "domme" and self._member_has_role(member, self.config.submissive_role_id):
+        if signup_type == "domme" and self._member_has_role(
+            member, self.config.submissive_role_id
+        ):
             return "You already have the Sub role."
-        if signup_type == "sub" and self._member_has_role(member, self.config.domme_role_id):
+        if signup_type == "sub" and self._member_has_role(
+            member, self.config.domme_role_id
+        ):
             return "You already have the Domme role."
         return None
 
@@ -573,18 +648,32 @@ class RobEventCog(commands.Cog):
             ]
         )
         return CountingState(
-            current_number=max(0, self._parse_count_int(values.get(_COUNT_KEY_CURRENT), default=0)),
-            is_active=self._parse_count_bool(values.get(_COUNT_KEY_ACTIVE), default=False),
-            pending_restore=self._parse_count_bool(values.get(_COUNT_KEY_PENDING_RESTORE), default=False),
+            current_number=max(
+                0, self._parse_count_int(values.get(_COUNT_KEY_CURRENT), default=0)
+            ),
+            is_active=self._parse_count_bool(
+                values.get(_COUNT_KEY_ACTIVE), default=False
+            ),
+            pending_restore=self._parse_count_bool(
+                values.get(_COUNT_KEY_PENDING_RESTORE), default=False
+            ),
             restore_mode=(values.get(_COUNT_KEY_RESTORE_MODE) or "").strip() or None,
-            restore_until=self._parse_count_datetime(values.get(_COUNT_KEY_RESTORE_UNTIL)),
+            restore_until=self._parse_count_datetime(
+                values.get(_COUNT_KEY_RESTORE_UNTIL)
+            ),
             restore_value=(
                 self._parse_count_int(values.get(_COUNT_KEY_RESTORE_VALUE), default=0)
                 if values.get(_COUNT_KEY_RESTORE_VALUE) is not None
                 else None
             ),
-            failed_user_id=self._parse_count_int(values.get(_COUNT_KEY_FAILED_USER_ID), default=0) or None,
-            last_user_id=self._parse_count_int(values.get(_COUNT_KEY_LAST_USER_ID), default=0) or None,
+            failed_user_id=self._parse_count_int(
+                values.get(_COUNT_KEY_FAILED_USER_ID), default=0
+            )
+            or None,
+            last_user_id=self._parse_count_int(
+                values.get(_COUNT_KEY_LAST_USER_ID), default=0
+            )
+            or None,
         )
 
     async def _save_counting_state(
@@ -607,24 +696,32 @@ class RobEventCog(commands.Cog):
         if pending_restore is not None:
             values[_COUNT_KEY_PENDING_RESTORE] = 1 if pending_restore else 0
         if restore_mode is not _COUNT_UNSET:
-            values[_COUNT_KEY_RESTORE_MODE] = restore_mode if isinstance(restore_mode, str) else None
+            values[_COUNT_KEY_RESTORE_MODE] = (
+                restore_mode if isinstance(restore_mode, str) else None
+            )
         if restore_until is not _COUNT_UNSET:
             values[_COUNT_KEY_RESTORE_UNTIL] = (
-                restore_until.isoformat() if isinstance(restore_until, datetime) else None
+                restore_until.isoformat()
+                if isinstance(restore_until, datetime)
+                else None
             )
         if restore_value is not _COUNT_UNSET:
             values[_COUNT_KEY_RESTORE_VALUE] = (
-                max(0, int(restore_value))
-                if isinstance(restore_value, int)
-                else None
+                max(0, int(restore_value)) if isinstance(restore_value, int) else None
             )
         if failed_user_id is not _COUNT_UNSET:
-            values[_COUNT_KEY_FAILED_USER_ID] = int(failed_user_id) if isinstance(failed_user_id, int) else None
+            values[_COUNT_KEY_FAILED_USER_ID] = (
+                int(failed_user_id) if isinstance(failed_user_id, int) else None
+            )
         if last_user_id is not _COUNT_UNSET:
-            values[_COUNT_KEY_LAST_USER_ID] = int(last_user_id) if isinstance(last_user_id, int) else None
+            values[_COUNT_KEY_LAST_USER_ID] = (
+                int(last_user_id) if isinstance(last_user_id, int) else None
+            )
         await self.database.set_bot_config_values(values=values)
 
-    async def _expire_count_restore_if_needed(self, state: CountingState) -> CountingState:
+    async def _expire_count_restore_if_needed(
+        self, state: CountingState
+    ) -> CountingState:
         if not state.pending_restore or state.restore_until is None:
             return state
         if datetime.now(timezone.utc) <= state.restore_until:
@@ -644,7 +741,9 @@ class RobEventCog(commands.Cog):
     async def _add_count_failure_reaction(self, message: discord.Message) -> None:
         emoji: str | discord.Emoji = _COUNT_FAIL_REACTION_FALLBACK
         if message.guild is not None:
-            custom = discord.utils.get(message.guild.emojis, name=_COUNT_FAIL_REACTION_NAME)
+            custom = discord.utils.get(
+                message.guild.emojis, name=_COUNT_FAIL_REACTION_NAME
+            )
             if custom is not None:
                 emoji = custom
         try:
@@ -666,7 +765,9 @@ class RobEventCog(commands.Cog):
             "to 1 in 5 minutes time."
         )
 
-    async def _handle_count_failure(self, message: discord.Message, *, state: CountingState) -> None:
+    async def _handle_count_failure(
+        self, message: discord.Message, *, state: CountingState
+    ) -> None:
         await self._add_count_failure_reaction(message)
         member = message.author if isinstance(message.author, discord.Member) else None
         if member is None:
@@ -718,7 +819,9 @@ class RobEventCog(commands.Cog):
         if message.attachments or message.stickers:
             return
 
-        state = await self._expire_count_restore_if_needed(await self._load_counting_state())
+        state = await self._expire_count_restore_if_needed(
+            await self._load_counting_state()
+        )
         if not state.is_active:
             return
 
@@ -739,17 +842,27 @@ class RobEventCog(commands.Cog):
             await self._handle_count_failure(message, state=state)
             return
 
-        await self._save_counting_state(current_number=entered, last_user_id=message.author.id)
+        await self._save_counting_state(
+            current_number=entered, last_user_id=message.author.id
+        )
         try:
             await message.add_reaction(_COUNT_SUCCESS_REACTION)
         except discord.HTTPException:
             return
 
-    async def process_count_restore_from_send(self, *, domme_user_id: int, send: EventSend) -> None:
-        state = await self._expire_count_restore_if_needed(await self._load_counting_state())
+    async def process_count_restore_from_send(
+        self, *, domme_user_id: int, send: EventSend
+    ) -> None:
+        state = await self._expire_count_restore_if_needed(
+            await self._load_counting_state()
+        )
         if not state.pending_restore:
             return
-        restore_value = state.restore_value if state.restore_value is not None else state.current_number
+        restore_value = (
+            state.restore_value
+            if state.restore_value is not None
+            else state.current_number
+        )
         mode = (state.restore_mode or "").strip().lower()
 
         if mode == _COUNT_RESTORE_MODE_OWNER:
@@ -757,16 +870,24 @@ class RobEventCog(commands.Cog):
                 guild_id=str(self.config.guild_id or 0),
                 discord_user_id=str(domme_user_id),
             )
-            if creator is None or creator.throne_handle.casefold() != _COUNT_OWNER_RESTORE_HANDLE:
+            if (
+                creator is None
+                or creator.throne_handle.casefold() != _COUNT_OWNER_RESTORE_HANDLE
+            ):
                 return
         elif mode == _COUNT_RESTORE_MODE_SUBMISSIVE:
-            if state.failed_user_id is None or send.claimed_sub_user_id != state.failed_user_id:
+            if (
+                state.failed_user_id is None
+                or send.claimed_sub_user_id != state.failed_user_id
+            ):
                 return
             guild = self.bot.get_guild(self.config.guild_id)
             if guild is None:
                 return
             domme_member = guild.get_member(domme_user_id)
-            if domme_member is None or not self._member_has_role(domme_member, self.config.domme_role_id):
+            if domme_member is None or not self._member_has_role(
+                domme_member, self.config.domme_role_id
+            ):
                 return
         else:
             return
@@ -795,7 +916,11 @@ class RobEventCog(commands.Cog):
     async def _is_registered_domme(self, *, member: discord.Member) -> bool:
         if self._member_has_role(member, self.config.domme_role_id):
             return True
-        guild_id = str(member.guild.id) if member.guild is not None else str(self.config.guild_id or 0)
+        guild_id = (
+            str(member.guild.id)
+            if member.guild is not None
+            else str(self.config.guild_id or 0)
+        )
         creator = await self.database.get_throne_creator_by_discord_user(
             guild_id=guild_id,
             discord_user_id=str(member.id),
@@ -866,7 +991,9 @@ class RobEventCog(commands.Cog):
                 configured_events.append(f"{event.theme.emoji} {event.name} — disabled")
                 continue
             if not event.is_config_complete:
-                configured_events.append(f"{event.theme.emoji} {event.name} — enabled, missing dates")
+                configured_events.append(
+                    f"{event.theme.emoji} {event.name} — enabled, missing dates"
+                )
                 continue
             assert event.start_at is not None and event.end_at is not None
             if event.is_active(now):
@@ -900,16 +1027,26 @@ class RobEventCog(commands.Cog):
         )
 
     @count_group.command(name="fix", description="Set the counting baseline number.")
-    @app_commands.describe(startingnumber="Set the baseline. Next valid message is this number + 1.")
-    async def count_fix(self, interaction: discord.Interaction, startingnumber: int) -> None:
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+    @app_commands.describe(
+        startingnumber="Set the baseline. Next valid message is this number + 1."
+    )
+    async def count_fix(
+        self, interaction: discord.Interaction, startingnumber: int
+    ) -> None:
+        if interaction.guild is None or not isinstance(
+            interaction.user, discord.Member
+        ):
             await interaction.response.send_message("Server only.", ephemeral=True)
             return
         if not has_admin_command_permissions(interaction.user, self.config):
-            await interaction.response.send_message("Nope. Not for you.", ephemeral=True)
+            await interaction.response.send_message(
+                "Nope. Not for you.", ephemeral=True
+            )
             return
         if startingnumber < 0:
-            await interaction.response.send_message("Starting number must be 0 or higher.", ephemeral=True)
+            await interaction.response.send_message(
+                "Starting number must be 0 or higher.", ephemeral=True
+            )
             return
 
         await self._save_counting_state(
@@ -927,7 +1064,9 @@ class RobEventCog(commands.Cog):
             ephemeral=True,
         )
 
-    @count_group.command(name="status", description="Show how to check the current count.")
+    @count_group.command(
+        name="status", description="Show how to check the current count."
+    )
     async def count_status(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
             "To see what number the count is up to, open the counting channel lol",
@@ -935,7 +1074,9 @@ class RobEventCog(commands.Cog):
         )
 
     @commands.command(name="rule")
-    async def rule(self, ctx: commands.Context[commands.Bot], *, topic: str | None = None) -> None:
+    async def rule(
+        self, ctx: commands.Context[commands.Bot], *, topic: str | None = None
+    ) -> None:
         if topic is None:
             await ctx.reply(_RULE_HELP_MESSAGE, mention_author=False)
             return
@@ -956,9 +1097,9 @@ class RobEventCog(commands.Cog):
         except ValueError:
             await ctx.reply("Invalid user id.", mention_author=False)
             return
-    
+
         guild_id = str(ctx.guild.id) if ctx.guild else "0"
-    
+
         removed_creator_id = await self.database.remove_throne_creator_by_discord_user(
             guild_id=guild_id, discord_user_id=discord_user_id
         )
@@ -967,7 +1108,7 @@ class RobEventCog(commands.Cog):
             reason="throne blacklist",
             created_by=str(ctx.author.id),
         )
-    
+
         if removed_creator_id is None:
             await ctx.reply(
                 f"No Throne registration found for `{discord_user_id}`. Added to global blacklist.",
@@ -978,11 +1119,12 @@ class RobEventCog(commands.Cog):
                 f"Removed Throne registration `{removed_creator_id}` for `{discord_user_id}` and added them to the global blacklist. Historical sends are kept.",
                 mention_author=False,
             )
-    
-    
+
     @commands.command(name="rob-blacklist")
     @commands.has_permissions(manage_guild=True)
-    async def rob_blacklist(self, ctx: commands.Context, target: str, *, reason: str = "manual") -> None:
+    async def rob_blacklist(
+        self, ctx: commands.Context, target: str, *, reason: str = "manual"
+    ) -> None:
         """Add a user to Rob's silent blacklist."""
         try:
             discord_user_id = str(int(target.strip("<@!>")))
@@ -998,8 +1140,7 @@ class RobEventCog(commands.Cog):
             f"`{discord_user_id}` has been added to the blacklist. Silent.",
             mention_author=False,
         )
-    
-    
+
     @commands.command(name="rob-unblacklist")
     @commands.has_permissions(manage_guild=True)
     async def rob_unblacklist(self, ctx: commands.Context, target: str) -> None:
@@ -1031,7 +1172,9 @@ class RobEventCog(commands.Cog):
         await self._handle_counting_message(message)
 
     @commands.Cog.listener()
-    async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
+    async def on_message_edit(
+        self, before: discord.Message, after: discord.Message
+    ) -> None:
         _ = before
         await self._process_carlbot_warn_message(after)
 
@@ -1044,11 +1187,11 @@ class RobEventCog(commands.Cog):
         text = message.content.strip() or "*[no text]*"
         if len(text) > 1400:
             text = f"{text[:1400]}…"
-        attachment_lines = [attachment.url for attachment in message.attachments if attachment.url]
+        attachment_lines = [
+            attachment.url for attachment in message.attachments if attachment.url
+        ]
         attachment_block = (
-            "\nAttachments:\n" + "\n".join(attachment_lines)
-            if attachment_lines
-            else ""
+            "\nAttachments:\n" + "\n".join(attachment_lines) if attachment_lines else ""
         )
         embed_block = f"\nEmbeds: {len(message.embeds)}" if message.embeds else ""
         audit_text = (
@@ -1063,9 +1206,15 @@ class RobEventCog(commands.Cog):
                 owner = await self.bot.fetch_user(_DM_AUDIT_OWNER_ID)
             await owner.send(audit_text)
         except (discord.NotFound, discord.Forbidden):
-            log.warning("Could not deliver DM audit copy to owner %s.", _DM_AUDIT_OWNER_ID)
+            log.warning(
+                "Could not deliver DM audit copy to owner %s.", _DM_AUDIT_OWNER_ID
+            )
         except discord.HTTPException:
-            log.warning("Failed to deliver DM audit copy to owner %s.", _DM_AUDIT_OWNER_ID, exc_info=True)
+            log.warning(
+                "Failed to deliver DM audit copy to owner %s.",
+                _DM_AUDIT_OWNER_ID,
+                exc_info=True,
+            )
 
     @staticmethod
     def _extract_warned_user_id_from_embed(embed: discord.Embed) -> int | None:
@@ -1142,12 +1291,18 @@ class RobEventCog(commands.Cog):
             await user.send(dm_text)
             log.info("Sent warn DM to user %s.", user_id)
         except discord.Forbidden:
-            log.info("Could not DM warned user %s (DMs closed or bot is blocked).", user_id)
+            log.info(
+                "Could not DM warned user %s (DMs closed or bot is blocked).", user_id
+            )
         except (discord.NotFound, discord.HTTPException):
             log.warning("Failed to send warn DM to user %s.", user_id, exc_info=True)
 
-    @app_commands.command(name="register", description="Register for the event as a Domme or Sub.")
-    @app_commands.describe(action="Choose whether you're signing up as a Domme or a Sub.")
+    @app_commands.command(
+        name="register", description="Register for the event as a Domme or Sub."
+    )
+    @app_commands.describe(
+        action="Choose whether you're signing up as a Domme or a Sub."
+    )
     @app_commands.choices(
         action=[
             app_commands.Choice(name="Domme", value="domme"),
@@ -1166,7 +1321,9 @@ class RobEventCog(commands.Cog):
             )
             return
         signup_type = action.value
-        reason = await self.get_signup_block_reason(interaction, signup_type=signup_type)
+        reason = await self.get_signup_block_reason(
+            interaction, signup_type=signup_type
+        )
         if reason is not None:
             await interaction.response.send_message(reason, ephemeral=True)
             return
@@ -1175,14 +1332,21 @@ class RobEventCog(commands.Cog):
         else:
             await interaction.response.send_modal(SubSignupModal(self))
 
-    @app_commands.command(name="add", description="Log a manual send to the leaderboard.")
+    @app_commands.command(
+        name="add", description="Log a manual send to the leaderboard."
+    )
     @app_commands.describe(
         amount="Amount sent in USD",
         method="Where the send happened",
         sub="Sub name/handle",
         note="Optional note for this send",
     )
-    @app_commands.choices(method=[app_commands.Choice(name=value, value=value) for value in _MANUAL_SEND_METHODS])
+    @app_commands.choices(
+        method=[
+            app_commands.Choice(name=value, value=value)
+            for value in _MANUAL_SEND_METHODS
+        ]
+    )
     async def add_send(
         self,
         interaction: discord.Interaction,
@@ -1197,17 +1361,23 @@ class RobEventCog(commands.Cog):
                 ephemeral=True,
             )
             return
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        if interaction.guild is None or not isinstance(
+            interaction.user, discord.Member
+        ):
             await interaction.response.send_message("Server only.", ephemeral=True)
             return
 
         if not await self._is_registered_domme(member=interaction.user):
-            await interaction.response.send_message("Only registered Dommes can use this command.", ephemeral=True)
+            await interaction.response.send_message(
+                "Only registered Dommes can use this command.", ephemeral=True
+            )
             return
 
         tracker_cog = self.bot.get_cog("ThroneTrackerCog")
         if tracker_cog is None:
-            await interaction.response.send_message("Rob lost the send logger. Try again in a minute.", ephemeral=True)
+            await interaction.response.send_message(
+                "Rob lost the send logger. Try again in a minute.", ephemeral=True
+            )
             return
 
         context = await self.get_runtime_context()
@@ -1225,7 +1395,9 @@ class RobEventCog(commands.Cog):
             event_key=event_key,
         )
         if result is None:
-            await interaction.response.send_message("That send could not be recorded right now.", ephemeral=True)
+            await interaction.response.send_message(
+                "That send could not be recorded right now.", ephemeral=True
+            )
             return
 
         _, send_public_id = result
@@ -1234,14 +1406,21 @@ class RobEventCog(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="sendrequest", description="Request a Domme to log a send you made.")
+    @app_commands.command(
+        name="sendrequest", description="Request a Domme to log a send you made."
+    )
     @app_commands.describe(
         domme="Domme you sent to",
         amount="Amount sent in USD",
         method="Where the send happened",
         note="Optional context (screenshot URL, message, etc.)",
     )
-    @app_commands.choices(method=[app_commands.Choice(name=value, value=value) for value in _REQUEST_SEND_METHODS])
+    @app_commands.choices(
+        method=[
+            app_commands.Choice(name=value, value=value)
+            for value in _REQUEST_SEND_METHODS
+        ]
+    )
     async def send_request(
         self,
         interaction: discord.Interaction,
@@ -1256,7 +1435,9 @@ class RobEventCog(commands.Cog):
                 ephemeral=True,
             )
             return
-        blocked = await self.database.is_user_blacklisted(discord_user_id=str(interaction.user.id))
+        blocked = await self.database.is_user_blacklisted(
+            discord_user_id=str(interaction.user.id)
+        )
         if blocked:
             await send_deny_response(interaction)
             return
@@ -1266,7 +1447,9 @@ class RobEventCog(commands.Cog):
             return
 
         if not await self._is_registered_domme(member=domme):
-            await interaction.response.send_message("That user isn't a registered domme.", ephemeral=True)
+            await interaction.response.send_message(
+                "That user isn't a registered domme.", ephemeral=True
+            )
             return
 
         since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -1294,8 +1477,14 @@ class RobEventCog(commands.Cog):
         sub_display_name = interaction.user.display_name
         # `/add` intentionally excludes `throne` because webhook sends are normally
         # automatic, so throne requests map to `other` when manually logging.
-        suggested_method = method.value if method.value in _MANUAL_SEND_METHODS else "other"
-        method_hint = "(`throne` requests should be logged as `other` in /add)." if method.value == "throne" else ""
+        suggested_method = (
+            method.value if method.value in _MANUAL_SEND_METHODS else "other"
+        )
+        method_hint = (
+            "(`throne` requests should be logged as `other` in /add)."
+            if method.value == "throne"
+            else ""
+        )
         add_hint = _SEND_REQUEST_ADD_HINT_TEMPLATE.format(
             amount=float(amount),
             method=suggested_method,
@@ -1429,7 +1618,9 @@ class RobEventCog(commands.Cog):
             )
 
         # Save to event_dommes as before (keeps leaderboard / existing flows working).
-        await self.database.save_event_domme(user_id=interaction.user.id, throne_url=normalized)
+        await self.database.save_event_domme(
+            user_id=interaction.user.id, throne_url=normalized
+        )
         await self.sync_leaderboard_channel()
 
         # Build the webhook URL if the base URL is configured.
@@ -1483,10 +1674,14 @@ class RobEventCog(commands.Cog):
 
         sub_name = " ".join(raw_name.strip().split())
         if not sub_name:
-            await interaction.response.send_message("Need a name to track.", ephemeral=True)
+            await interaction.response.send_message(
+                "Need a name to track.", ephemeral=True
+            )
             return
         if sub_name.casefold() in _RESERVED_SUB_NAMES:
-            await interaction.response.send_message("That name is reserved. Pick another one.", ephemeral=True)
+            await interaction.response.send_message(
+                "That name is reserved. Pick another one.", ephemeral=True
+            )
             return
 
         # Defer before DB writes and leaderboard sync — those can exceed the
@@ -1496,10 +1691,14 @@ class RobEventCog(commands.Cog):
 
         existing = await self.database.get_event_sub_by_name(sub_name=sub_name)
         if existing is not None and existing.user_id != interaction.user.id:
-            await interaction.followup.send("That name is taken already.", ephemeral=True)
+            await interaction.followup.send(
+                "That name is taken already.", ephemeral=True
+            )
             return
 
-        await self.database.save_event_sub(user_id=interaction.user.id, sub_name=sub_name)
+        await self.database.save_event_sub(
+            user_id=interaction.user.id, sub_name=sub_name
+        )
         await self.sync_leaderboard_channel()
         await interaction.followup.send(
             view=success_view(
@@ -1512,7 +1711,9 @@ class RobEventCog(commands.Cog):
             ephemeral=True,
         )
 
-    async def sync_leaderboard_channel(self, *, context: EventRuntimeContext | None = None) -> None:
+    async def sync_leaderboard_channel(
+        self, *, context: EventRuntimeContext | None = None
+    ) -> None:
         if context is None:
             context = await self.get_runtime_context()
         await self._sync_leaderboard_channel(context)
@@ -1552,14 +1753,27 @@ class RobEventCog(commands.Cog):
             return
 
         event_key = context.event_key
-        sub_rows_db = await self.database.get_event_sub_totals(limit=20, offset=0, event_key=event_key)
+        sub_rows_db = await self.database.get_event_sub_totals(
+            limit=20, offset=0, event_key=event_key
+        )
         domme_rows_db = await self.database.get_event_domme_totals(event_key=event_key)
-        unclaimed_total = await self.database.get_event_unclaimed_total(event_key=event_key)
-        unclaimed_rows_db = await self.database.get_unclaimed_send_rows(limit=8, event_key=event_key)
+        unclaimed_total = await self.database.get_event_unclaimed_total(
+            event_key=event_key
+        )
+        unclaimed_rows_db = await self.database.get_unclaimed_send_rows(
+            limit=8, event_key=event_key
+        )
 
-        domme_rows = [(f"<@{row.user_id}>", row.total_usd, row.send_count) for row in domme_rows_db]
-        sub_rows = [(f"<@{row.user_id}>", row.total_usd, row.send_count) for row in sub_rows_db]
-        unclaimed_rows = [(row.sub_name, row.total_usd, row.send_count) for row in unclaimed_rows_db]
+        domme_rows = [
+            (f"<@{row.user_id}>", row.total_usd, row.send_count)
+            for row in domme_rows_db
+        ]
+        sub_rows = [
+            (f"<@{row.user_id}>", row.total_usd, row.send_count) for row in sub_rows_db
+        ]
+        unclaimed_rows = [
+            (row.sub_name, row.total_usd, row.send_count) for row in unclaimed_rows_db
+        ]
 
         status_lines = self._leaderboard_status_lines(context)
         domme_helper = [
@@ -1611,14 +1825,24 @@ class RobEventCog(commands.Cog):
             view=sub_view,
         )
 
-    async def _leaderboard_messages_need_reorder(self, channel: discord.TextChannel) -> bool:
-        domme_ref = await self.database.get_event_message(message_key="event:domme_totals")
-        sub_ref = await self.database.get_event_message(message_key="event:sub_leaderboard")
+    async def _leaderboard_messages_need_reorder(
+        self, channel: discord.TextChannel
+    ) -> bool:
+        domme_ref = await self.database.get_event_message(
+            message_key="event:domme_totals"
+        )
+        sub_ref = await self.database.get_event_message(
+            message_key="event:sub_leaderboard"
+        )
         if domme_ref is None or sub_ref is None:
             return False
         domme_id, domme_channel_id = domme_ref
         sub_id, sub_channel_id = sub_ref
-        return domme_channel_id == channel.id and sub_channel_id == channel.id and domme_id > sub_id
+        return (
+            domme_channel_id == channel.id
+            and sub_channel_id == channel.id
+            and domme_id > sub_id
+        )
 
     async def _clear_leaderboard_messages(self, channel: discord.TextChannel) -> None:
         for key in ("event:domme_totals", "event:sub_leaderboard"):
@@ -1660,7 +1884,9 @@ class RobEventCog(commands.Cog):
             else:
                 await message.edit(view=view)
         except discord.HTTPException:
-            log.exception("Failed to upsert message %s in channel %s.", message_key, channel.id)
+            log.exception(
+                "Failed to upsert message %s in channel %s.", message_key, channel.id
+            )
             return None
 
         await self.database.upsert_event_message(
@@ -1686,12 +1912,23 @@ class RobEventCog(commands.Cog):
             return
 
         summary = await self.database.get_send_summary(event_key=state.event_key)
-        domme_rows_db = await self.database.get_event_domme_totals(event_key=state.event_key)
-        sub_rows_db = await self.database.get_event_sub_totals(limit=50, offset=0, event_key=state.event_key)
-        unclaimed_total = await self.database.get_event_unclaimed_total(event_key=state.event_key)
+        domme_rows_db = await self.database.get_event_domme_totals(
+            event_key=state.event_key
+        )
+        sub_rows_db = await self.database.get_event_sub_totals(
+            limit=50, offset=0, event_key=state.event_key
+        )
+        unclaimed_total = await self.database.get_event_unclaimed_total(
+            event_key=state.event_key
+        )
 
-        domme_rows = [(f"<@{row.user_id}>", row.total_usd, row.send_count) for row in domme_rows_db]
-        sub_rows = [(f"<@{row.user_id}>", row.total_usd, row.send_count) for row in sub_rows_db]
+        domme_rows = [
+            (f"<@{row.user_id}>", row.total_usd, row.send_count)
+            for row in domme_rows_db
+        ]
+        sub_rows = [
+            (f"<@{row.user_id}>", row.total_usd, row.send_count) for row in sub_rows_db
+        ]
 
         title = "🏆 Rob | Leaderboards | Final Report"
         summary_view = FinalReportSummaryView(
@@ -1703,7 +1940,9 @@ class RobEventCog(commands.Cog):
             total_send_amount=format_money(summary.total_usd),
             total_send_count=summary.send_count,
             dommes_ranked=len(domme_rows_db),
-            subs_ranked=await self.database.count_event_ranked_subs(event_key=state.event_key),
+            subs_ranked=await self.database.count_event_ranked_subs(
+                event_key=state.event_key
+            ),
             unclaimed_total=format_money(unclaimed_total),
             generated_at=self._format_iso_label(datetime.now(timezone.utc).isoformat()),
         )
@@ -1723,7 +1962,9 @@ class RobEventCog(commands.Cog):
             rows=sub_rows,
             empty_message="Nobody landed on the sub board this round.",
             accent_color=theme.accent_color,
-            helper_lines=[f"Unclaimed total: **{format_money(unclaimed_total)}**"] if unclaimed_total > 0.01 else None,
+            helper_lines=[f"Unclaimed total: **{format_money(unclaimed_total)}**"]
+            if unclaimed_total > 0.01
+            else None,
             footer=f"Event key: {state.event_key}",
         )
 
@@ -1744,7 +1985,10 @@ class RobEventCog(commands.Cog):
         await self.database.mark_event_report_posted(event_key=state.event_key)
 
     def _report_channel(self, guild: discord.Guild) -> discord.TextChannel | None:
-        for channel_id in (self.config.event_report_channel_id, self.config.leaderboard_channel_id):
+        for channel_id in (
+            self.config.event_report_channel_id,
+            self.config.leaderboard_channel_id,
+        ):
             if not channel_id:
                 continue
             channel = guild.get_channel(channel_id)
@@ -1757,7 +2001,9 @@ class RobEventCog(commands.Cog):
             status = ["🟢 Active"]
             if context.active_state.ends_at:
                 try:
-                    end_ts = int(datetime.fromisoformat(context.active_state.ends_at).timestamp())
+                    end_ts = int(
+                        datetime.fromisoformat(context.active_state.ends_at).timestamp()
+                    )
                     status.append(f"Ends <t:{end_ts}:R> / <t:{end_ts}:f>")
                 except ValueError:
                     pass

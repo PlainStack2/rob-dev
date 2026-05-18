@@ -88,10 +88,18 @@ def _load_channel_id(name: str) -> int:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        log.warning("bot/channels.py has an invalid %s value %r. Rob will treat it as 0.", name, raw)
+        log.warning(
+            "bot/channels.py has an invalid %s value %r. Rob will treat it as 0.",
+            name,
+            raw,
+        )
         return 0
     if value < 0:
-        log.warning("bot/channels.py has a negative %s value %r. Rob will treat it as 0.", name, raw)
+        log.warning(
+            "bot/channels.py has a negative %s value %r. Rob will treat it as 0.",
+            name,
+            raw,
+        )
         return 0
     if value == 0 and name not in {
         "EVENT_BAN_ROLE_ID",
@@ -99,7 +107,10 @@ def _load_channel_id(name: str) -> int:
         "WARN_LOG_CHANNEL_ID",
         "CARLBOT_USER_ID",
     }:
-        log.warning("bot/channels.py is missing %s. Some Discord features will stay offline.", name)
+        log.warning(
+            "bot/channels.py is missing %s. Some Discord features will stay offline.",
+            name,
+        )
     return value
 
 
@@ -138,8 +149,12 @@ def load_config() -> BotConfig:
         leaderboard_channel_id=_load_channel_id("LEADERBOARD_CHANNEL_ID"),
         send_track_channel_id=_load_channel_id("SEND_TRACK_CHANNEL_ID"),
         events_config_path=events_config_path,
-        database_path=Path(os.getenv("DATABASE_PATH", "/opt/rob-the-bot/data/rob_the_bot.sqlite3")),
-        throne_poll_interval_seconds=_env_int("THRONE_POLL_INTERVAL_SECONDS", 30, minimum=30),
+        database_path=Path(
+            os.getenv("DATABASE_PATH", "/opt/rob-the-bot/data/rob_the_bot.sqlite3")
+        ),
+        throne_poll_interval_seconds=_env_int(
+            "THRONE_POLL_INTERVAL_SECONDS", 30, minimum=30
+        ),
         throne_poll_per_domme_delay_seconds=_env_float(
             "THRONE_POLL_PER_DOMME_DELAY_SECONDS", 3.0, minimum=0.0
         ),
@@ -150,10 +165,12 @@ def load_config() -> BotConfig:
         throne_webhook_port=_env_int("THRONE_WEBHOOK_PORT", 8080, minimum=1),
         throne_webhook_base_url=os.getenv("THRONE_WEBHOOK_BASE_URL") or None,
         throne_webhook_require_signature=(
-            os.getenv("THRONE_WEBHOOK_REQUIRE_SIGNATURE", "true").strip().lower() != "false"
+            os.getenv("THRONE_WEBHOOK_REQUIRE_SIGNATURE", "true").strip().lower()
+            != "false"
         ),
         throne_webhook_debug_log_payload=(
-            os.getenv("THRONE_WEBHOOK_DEBUG_LOG_PAYLOAD", "false").strip().lower() == "true"
+            os.getenv("THRONE_WEBHOOK_DEBUG_LOG_PAYLOAD", "false").strip().lower()
+            == "true"
         ),
         throne_public_key_pem=os.getenv("THRONE_PUBLIC_KEY_PEM") or None,
         throne_webhook_timestamp_header=os.getenv(
