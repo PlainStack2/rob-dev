@@ -3,12 +3,12 @@
 # Usage: sudo bash install.sh
 set -euo pipefail
 
-REPO_URL="https://github.com/notpatdev/rob-the-bot.git"
-APP_ROOT="/opt/rob-the-bot"
+REPO_URL="https://github.com/PlainStack2/rob-dev.git"
+APP_ROOT="/opt/rob"
 APP_DIR="${APP_ROOT}/app"
 DATA_DIR="${APP_ROOT}/data"
-SERVICE_NAME="rob-the-bot"
-SERVICE_FILE="rob-the-bot.service"
+SERVICE_NAME="rob-bot"
+SERVICE_FILE="rob-bot.service"
 RUNTIME_USER="robbot"
 DEPLOY_USER="robdeploy"
 PYTHON_BIN=""
