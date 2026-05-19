@@ -41,3 +41,8 @@ dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Legacy migration files
+*.tar.gz
+rob-sqlite-schema.sql
+rob_the_bot.sqlite3*

@@ -54,7 +54,7 @@ class Database:
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
         async with self.acquire() as connection:
-            async with connection.transaction:
+            async with connection.transaction():
                 yield connection
     
     async def health_check(self) -> bool:

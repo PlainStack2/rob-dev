@@ -43,9 +43,11 @@ CREATE TABLE IF NOT EXISTS subs (
     registered_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (guild_id, discord_user_id),
-    UNIQUE (guild_id, lower(send_name))
+    UNIQUE (guild_id, discord_user_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subs_guild_send_name_lower
+ON subs (guild_id, lower(send_name));
 
 CREATE TABLE IF NOT EXISTS throne_creators (
     id BIGSERIAL PRIMARY KEY,
@@ -149,15 +151,15 @@ CREATE TABLE IF NOT EXISTS send_requests (
     resolved_at TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXSITS idx_send_requests_rate_limit
+CREATE INDEX IF NOT EXISTS idx_send_requests_rate_limit
 ON send_requests (sub_user_id, domme_user_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_send_requests_status
 ON send_requests (guild_id, status);
 
 CREATE TABLE IF NOT EXISTS leaderboard_message (
-    id BIGSERIAL PRIMARY KEY
-    guild_id BIGINT NOT NULL REFERENCE guild_settings(guild_id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL REFERENCES guild_settings(guild_id) ON DELETE CASCADE,
     message_key TEXT NOT NULL,
     leaderboard_type TEXT,
     channel_id BIGINT NOT NULL,
@@ -168,7 +170,7 @@ CREATE TABLE IF NOT EXISTS leaderboard_message (
 );
 
 CREATE TABLE IF NOT EXISTS counting_state (
-    guild_id BIGINT PRIMARY KEY REFERENCE guild_settings(guild_id) ON DELETE CASCADE,
+    guild_id BIGINT PRIMARY KEY REFERENCES guild_settings(guild_id) ON DELETE CASCADE,
     channel_id BIGINT,
     current_number BIGINT NOT NULL DEFAULT 0,
     last_user_id BIGINT,
