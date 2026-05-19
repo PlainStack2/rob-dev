@@ -46,3 +46,5 @@ dist/
 *.tar.gz
 rob-sqlite-schema.sql
 rob_the_bot.sqlite3*
+
+legacy-import/
