@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files / secrets
+.env
+.env.*
+!.env.example
+
+# Local Discord/server config
+bot/channels.py
+
+# Databases / local data
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+logs/
+
+# Build/package junk
+build/
+dist/
+*.egg-info/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Legacy migration files
+*.tar.gz
+rob-sqlite-schema.sql
+rob_the_bot.sqlite3*
+
+legacy-import/

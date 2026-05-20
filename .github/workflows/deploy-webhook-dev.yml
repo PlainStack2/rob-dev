@@ -1,0 +1,17 @@
+name: Deploy Webhook Dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run webhook deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.WEBHOOK_DEV_HOST }}
+          username: ${{ secrets.WEBHOOK_DEV_USER }}
+          key: ${{ secrets.WEBHOOK_DEV_SSH_KEY }}
+          port: ${{ secrets.WEBHOOK_DEV_PORT }}
+          script: /opt/rob-webhook/deploy-webhook-dev.sh
