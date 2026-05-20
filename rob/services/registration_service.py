@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import secrets
+from dataclasses import dataclass
+
+from rob.database.repositories.blacklist import BlacklistRepository
+from rob.database.repositories.dommes import DommesRepository
+from rob.database.repositories.guild_settings import GuildSettingsRepository
+from rob.database.repositories.models import Domme, Sub, ThroneCreator
+from rob.database.repositories.subs import SubsRepository
+from rob.database.repositories.throne_creators import ThroneCreatorsRepository
+from rob.services.throne_service import ThroneService
+from rob.throne.scraper import normalize_throne_registration_input
+from rob.throne.security import hash_webhook_secret
+from rob.utils.text import collapse_whitespace
+
+_RESERVED_SUB_NAMES = {"anonymous", "anon", "private", "hidden"}
+
+
+@dataclass(frozen=True)
+class DommeRegistrationResult:
+    domme: Domme
+    creator: ThroneCreator
+    webhook_url: str | None
+
+
+@dataclass(frozen=True)
+class SubRegistrationResult:
+    sub: Sub
+
+
+class RegistrationService:
+    def __init__(
+        self,
+        *,
+        guild_settings: GuildSettingsRepository,
+        dommes: DommesRepository,
+        subs: SubsRepository,
+        throne_creators: ThroneCreatorsRepository,
+        blacklist: BlacklistRepository,
+        throne: ThroneService,
+        webhook_base_url: str | None = None,
+    ) -> None:
+        self.guild_settings = guild_settings
+        self.dommes = dommes
+        self.subs = subs
+        self.throne_creators = throne_creators
+        self.blacklist = blacklist
+        self.throne = throne
+        self.webhook_base_url = webhook_base_url.rstrip("/") if webhook_base_url else None
+
+    async def register_domme(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        throne_input: str,
+    ) -> DommeRegistrationResult:
+        if await self.blacklist.contains(discord_user_id):
+            raise ValueError("You are currently blocked from registering.")
+
+        normalized = normalize_throne_registration_input(throne_input)
+        if normalized is None:
+            raise ValueError("That Throne link or username could not be understood.")
+
+        creator_info = await self.throne.resolve_creator(normalized)
+        if creator_info is None:
+            raise ValueError("Rob could not resolve that Throne creator right now.")
+
+        await self.guild_settings.ensure_guild(guild_id)
+
+        existing_by_handle = await self.throne_creators.get_by_handle(
+            guild_id,
+            creator_info.throne_handle,
+        )
+        if existing_by_handle is not None and existing_by_handle.discord_user_id != discord_user_id:
+            raise ValueError("That Throne account is already linked to another Domme.")
+        existing_by_creator_id = await self.throne_creators.get_by_creator_id(
+            creator_info.creator_id
+        )
+        for existing_creator in existing_by_creator_id:
+            if (
+                existing_creator.guild_id == guild_id
+                and existing_creator.discord_user_id != discord_user_id
+            ):
+                raise ValueError("That Throne creator is already linked to another Domme.")
+
+        domme = await self.dommes.upsert(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            throne_url=normalized,
+        )
+
+        existing_for_user = await self.throne_creators.get_by_user_id(
+            guild_id,
+            discord_user_id,
+        )
+        webhook_secret = (
+            existing_for_user.webhook_secret
+            if existing_for_user is not None and existing_for_user.webhook_secret
+            else secrets.token_urlsafe(32)
+        )
+        tracking_mode = (
+            "webhook"
+            if existing_for_user is not None and existing_for_user.tracking_mode == "webhook"
+            else "disabled"
+        )
+
+        creator = await self.throne_creators.upsert_for_user(
+            guild_id=guild_id,
+            domme_id=domme.id,
+            discord_user_id=discord_user_id,
+            throne_handle=creator_info.throne_handle,
+            throne_creator_id=creator_info.creator_id,
+            hide_own_purchases=creator_info.hide_own_purchases,
+            tracking_mode=tracking_mode,
+            webhook_secret=webhook_secret,
+            webhook_secret_hash=hash_webhook_secret(webhook_secret),
+        )
+
+        webhook_url = None
+        if self.webhook_base_url:
+            webhook_url = (
+                f"{self.webhook_base_url}/throne/webhook/"
+                f"{creator_info.creator_id}/{webhook_secret}"
+            )
+
+        return DommeRegistrationResult(
+            domme=domme,
+            creator=creator,
+            webhook_url=webhook_url,
+        )
+
+    async def register_sub(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        send_name: str,
+    ) -> SubRegistrationResult:
+        if await self.blacklist.contains(discord_user_id):
+            raise ValueError("You are currently blocked from registering.")
+
+        cleaned_name = collapse_whitespace(send_name.strip())
+        if not cleaned_name:
+            raise ValueError("A sending name is required.")
+        if cleaned_name.casefold() in _RESERVED_SUB_NAMES:
+            raise ValueError("That sending name is reserved.")
+
+        await self.guild_settings.ensure_guild(guild_id)
+
+        existing = await self.subs.get_by_name(guild_id, cleaned_name)
+        if existing is not None and existing.discord_user_id != discord_user_id:
+            raise ValueError("That sending name is already claimed.")
+
+        sub = await self.subs.upsert(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            send_name=cleaned_name,
+        )
+        return SubRegistrationResult(sub=sub)

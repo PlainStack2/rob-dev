@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from rob.config.settings import configure_logging, load_settings
+from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 
-MIGRATIONS_DIR = Path("rob/database/migrations")
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "rob" / "database" / "migrations"
 
 async def main() -> None:
-    settings = load_settings()
+    settings = load_base_settings()
     configure_logging(settings.log_level)
 
     database = Database(settings.database_url)

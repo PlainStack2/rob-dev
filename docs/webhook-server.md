@@ -1,0 +1,46 @@
+# Webhook Server
+
+The webhook server is the HTTP-only side of Rob.
+
+## Responsibilities
+
+- Receives Throne webhook events.
+- Validates the URL secret against `webhook_secret` and `webhook_secret_hash`.
+- Optionally validates Throne Ed25519 signatures and timestamps.
+- Normalises accepted Throne purchase payloads.
+- Writes sends into PostgreSQL.
+- Respects maintenance mode by inserting `queued_maintenance` instead of `pending`.
+- Never connects to Discord.
+
+## Runtime
+
+- Entry point: `python -m apps.webhook.main`
+- Host/port: `THRONE_WEBHOOK_HOST` / `THRONE_WEBHOOK_PORT`
+- Health check: `GET /health`
+- Webhook route: `POST /throne/webhook/{creator_id}/{secret}`
+- The webhook runtime loads `WebhookSettings` only and can start without `DISCORD_TOKEN`.
+
+## Required environment
+
+- `APP_ENV`
+- `LOG_LEVEL`
+- `DATABASE_URL`
+- `THRONE_WEBHOOK_HOST`
+- `THRONE_WEBHOOK_PORT`
+- `THRONE_WEBHOOK_BASE_URL`
+- `THRONE_WEBHOOK_REQUIRE_SIGNATURE`
+- `THRONE_PUBLIC_KEY_PEM`
+- `THRONE_WEBHOOK_DEBUG_LOG_PAYLOAD`
+- `THRONE_WEBHOOK_TIMESTAMP_HEADER`
+- `THRONE_WEBHOOK_SIGNATURE_HEADER`
+- `THRONE_WEBHOOK_SIGNED_MESSAGE_FORMAT`
+- `THRONE_WEBHOOK_MAX_TIMESTAMP_SKEW_SECONDS`
+
+`DISCORD_TOKEN` is not required here.
+
+## `THRONE_WEBHOOK_REQUIRE_SIGNATURE`
+
+- When `THRONE_WEBHOOK_REQUIRE_SIGNATURE=true`, the webhook rejects requests with `401` if the timestamp is invalid, the public key is missing, or the Ed25519 signature check fails.
+- When `THRONE_WEBHOOK_REQUIRE_SIGNATURE=false`, the webhook skips Ed25519 signature validation entirely, but it still requires valid JSON plus a matching `{creator_id}/{secret}` URL pair.
+- For early local or tunnel-based dev, `false` is acceptable while the real Throne public key and signed-message format are still being verified.
+- For stricter shared-dev testing, switch it back to `true` and provide `THRONE_PUBLIC_KEY_PEM` plus the correct header and message-format settings.

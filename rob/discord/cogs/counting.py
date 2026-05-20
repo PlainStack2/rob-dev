@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from rob.ui.cards.counting import counting_updated_embed
+from rob.ui.cards.errors import error_embed
+
+if TYPE_CHECKING:
+    from rob.discord.client import RobBot
+
+
+class CountingCog(commands.Cog):
+    count_group = app_commands.Group(name="count", description="Counting controls.")
+
+    def __init__(self, bot: RobBot) -> None:
+        self.bot = bot
+
+    @count_group.command(name="set", description="Set the current counting number.")
+    @app_commands.default_permissions(manage_guild=True)
+    async def count_set(
+        self,
+        interaction: discord.Interaction,
+        number: app_commands.Range[int, 0],
+    ) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                embed=error_embed("This command can only be used in a server."),
+                ephemeral=True,
+            )
+            return
+
+        await self.bot.counting_service.set_current_number(interaction.guild.id, int(number))
+        await interaction.response.send_message(
+            embed=counting_updated_embed(int(number)),
+            ephemeral=True,
+        )
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        result = await self.bot.counting_service.process_message(message)
+        if result is None:
+            return
+        if result.success:
+            try:
+                await message.add_reaction("✅")
+            except discord.HTTPException:
+                return
+        else:
+            try:
+                await message.add_reaction("❌")
+            except discord.HTTPException:
+                return

@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+import logging
+import os
+
+import discord
+from discord.ext import commands
+
+from rob.config.settings import BotSettings
+from rob.database.connection import Database
+from rob.database.repositories import (
+    BlacklistRepository,
+    BotStateRepository,
+    CountingRepository,
+    DommesRepository,
+    GuildSettingsRepository,
+    LeaderboardsRepository,
+    SendRequestsRepository,
+    SendsRepository,
+    SubsRepository,
+    ThroneCreatorsRepository,
+)
+from rob.discord.cogs.counting import CountingCog
+from rob.discord.cogs.leaderboards import LeaderboardsCog
+from rob.discord.cogs.registration import RegistrationCog
+from rob.discord.cogs.sends import SendsCog
+from rob.services.counting_service import CountingService
+from rob.services.leaderboard_service import LeaderboardService
+from rob.services.maintenance_service import MaintenanceService
+from rob.services.registration_service import RegistrationService
+from rob.services.send_queue_service import SendQueueService
+from rob.services.send_service import SendService
+from rob.services.throne_service import ThroneService
+
+log = logging.getLogger(__name__)
+
+
+class RobBot(commands.Bot):
+    def __init__(self, settings: BotSettings) -> None:
+        intents = discord.Intents.default()
+        intents.guilds = True
+        intents.members = True
+        intents.message_content = True
+
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+            help_command=None,
+            allowed_mentions=discord.AllowedMentions(
+                users=True,
+                roles=True,
+                everyone=False,
+            ),
+        )
+        self.settings = settings
+        self.database = Database(settings.database_url)
+
+    async def setup_hook(self) -> None:
+        await self.database.connect()
+
+        self.guild_settings_repo = GuildSettingsRepository(self.database)
+        self.bot_state_repo = BotStateRepository(self.database)
+        self.blacklist_repo = BlacklistRepository(self.database)
+        self.dommes_repo = DommesRepository(self.database)
+        self.subs_repo = SubsRepository(self.database)
+        self.sends_repo = SendsRepository(self.database)
+        self.send_requests_repo = SendRequestsRepository(self.database)
+        self.throne_creators_repo = ThroneCreatorsRepository(self.database)
+        self.leaderboards_repo = LeaderboardsRepository(self.database)
+        self.counting_repo = CountingRepository(self.database)
+
+        self.throne_service = ThroneService()
+        self.maintenance_service = MaintenanceService(self.bot_state_repo)
+        self.leaderboard_service = LeaderboardService(
+            bot=self,
+            guild_settings=self.guild_settings_repo,
+            leaderboards=self.leaderboards_repo,
+        )
+        self.counting_service = CountingService(
+            counting=self.counting_repo,
+            guild_settings=self.guild_settings_repo,
+        )
+        self.registration_service = RegistrationService(
+            guild_settings=self.guild_settings_repo,
+            dommes=self.dommes_repo,
+            subs=self.subs_repo,
+            throne_creators=self.throne_creators_repo,
+            blacklist=self.blacklist_repo,
+            throne=self.throne_service,
+            webhook_base_url=os.getenv("THRONE_WEBHOOK_BASE_URL") or None,
+        )
+        self.send_service = SendService(
+            sends=self.sends_repo,
+            subs=self.subs_repo,
+            maintenance=self.maintenance_service,
+            throne=self.throne_service,
+        )
+        self.send_queue_service = SendQueueService(
+            bot=self,
+            sends=self.sends_repo,
+            guild_settings=self.guild_settings_repo,
+            maintenance=self.maintenance_service,
+            leaderboard_service=self.leaderboard_service,
+        )
+
+        await self.add_cog(RegistrationCog(self))
+        await self.add_cog(SendsCog(self))
+        await self.add_cog(LeaderboardsCog(self))
+        await self.add_cog(CountingCog(self))
+
+        self.tree.interaction_check = self._global_blacklist_interaction_check
+
+        guild_ids = await self.guild_settings_repo.list_guild_ids()
+        if len(guild_ids) == 1:
+            guild = discord.Object(id=guild_ids[0])
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            log.info("Synced %s guild command(s).", len(synced))
+        else:
+            synced = await self.tree.sync()
+            log.info("Synced %s global command(s).", len(synced))
+
+        await self.send_queue_service.start()
+
+    async def _global_blacklist_interaction_check(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        if interaction.user is None:
+            return True
+        if await self.blacklist_repo.contains(interaction.user.id):
+            await interaction.response.send_message(
+                "Rob can't help with that account right now.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    async def on_ready(self) -> None:
+        log.info("%s is online as %s.", self.settings.bot_name, self.user)
+
+    async def close(self) -> None:
+        if hasattr(self, "send_queue_service"):
+            await self.send_queue_service.stop()
+        if hasattr(self, "throne_service"):
+            await self.throne_service.close()
+        await self.database.close()
+        await super().close()

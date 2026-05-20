@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass(frozen=True)
+class GuildSettings:
+    guild_id: int
+    registration_channel_id: int | None
+    leaderboard_channel_id: int | None
+    send_track_channel_id: int | None
+    counting_channel_id: int | None
+    domme_role_id: int | None
+    sub_role_id: int | None
+    mod_role_id: int | None
+    warn_log_channel_id: int | None
+    carlbot_user_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class Domme:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    throne_url: str
+    registered_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class Sub:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    send_name: str
+    registered_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class ThroneCreator:
+    id: int
+    guild_id: int
+    domme_id: int | None
+    discord_user_id: int
+    throne_handle: str
+    throne_creator_id: str
+    hide_own_purchases: bool | None
+    tracking_mode: str
+    webhook_secret: str | None
+    webhook_secret_hash: str | None
+    webhook_connected_at: datetime | None
+    overlay_detected: bool
+    last_overlay_check_at: datetime | None
+    last_successful_event_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class SendRecord:
+    id: int
+    guild_id: int
+    domme_id: int | None
+    domme_user_id: int
+    sub_id: int | None
+    sub_user_id: int | None
+    sub_name: str | None
+    amount_cents: int
+    currency: str
+    method: str | None
+    source: str
+    item_name: str | None
+    item_image_url: str | None
+    external_id: str | None
+    event_id: str | None
+    fallback_event_hash: str | None
+    is_private: bool
+    seeded: bool
+    sent_at: datetime
+    received_at: datetime
+    discord_post_status: str
+    discord_posted_at: datetime | None
+    discord_message_id: int | None
+    discord_post_error: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class NewSend:
+    guild_id: int
+    domme_id: int | None
+    domme_user_id: int
+    sub_id: int | None
+    sub_user_id: int | None
+    sub_name: str | None
+    amount_cents: int
+    currency: str
+    method: str | None
+    source: str
+    item_name: str | None
+    item_image_url: str | None
+    external_id: str | None
+    event_id: str | None
+    fallback_event_hash: str | None
+    is_private: bool
+    seeded: bool
+    sent_at: datetime
+    discord_post_status: str
+
+
+@dataclass(frozen=True)
+class SendRequestRecord:
+    id: int
+    guild_id: int
+    sub_user_id: int
+    domme_user_id: int
+    amount_cents: int
+    currency: str
+    method: str
+    note: str | None
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+@dataclass(frozen=True)
+class LeaderboardMessageRef:
+    id: int
+    guild_id: int
+    message_key: str
+    leaderboard_type: str | None
+    channel_id: int
+    message_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class CountingState:
+    guild_id: int
+    channel_id: int | None
+    current_number: int
+    last_user_id: int | None
+    is_enabled: bool
+    pending_restore: bool
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class MaintenanceState:
+    enabled: bool
+    reason: str | None
+    updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class LeaderboardEntry:
+    label: str
+    user_id: int | None
+    total_cents: int
+    send_count: int
+
+
+@dataclass(frozen=True)
+class LeaderboardSummary:
+    total_cents: int
+    send_count: int
+    domme_count: int
+    sub_count: int
+
+
+@dataclass(frozen=True)
+class QueueStatus:
+    pending: int
+    queued_maintenance: int
+    posted: int
+    failed: int
+    ignored: int

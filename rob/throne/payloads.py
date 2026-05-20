@@ -6,22 +6,26 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+ACCEPTED_EVENT_TYPES = {
+    "gift_purchased",
+    "contribution_purchased",
+    "gift_crowdfunded",
+    "item_purchased",
+}
+
+
 @dataclass(frozen=True)
 class ThroneSendPayload:
     event_id: str | None
     event_type: str | None
     order_id: str | None
-
     gifter_username: str | None
     item_name: str | None
     item_image_url: str | None
-
     amount_cents: int
     currency: str
-
     is_private: bool
     purchased_at: datetime
-
     fallback_event_hash: str
 
 
@@ -38,10 +42,8 @@ def _first(*values: Any) -> Any:
 
 def _first_str(*values: Any) -> str | None:
     value = _first(*values)
-
     if value is None:
         return None
-
     text = str(value).strip()
     return text or None
 
@@ -50,8 +52,13 @@ def _truthy(*values: Any) -> bool:
     for value in values:
         if bool(value):
             return True
-
     return False
+
+
+def is_supported_event_type(event_type: str | None) -> bool:
+    if not event_type:
+        return True
+    return event_type in ACCEPTED_EVENT_TYPES
 
 
 def parse_timestamp(value: Any) -> datetime:
@@ -59,7 +66,6 @@ def parse_timestamp(value: Any) -> datetime:
         return datetime.now(timezone.utc)
 
     text = str(value).strip()
-
     if not text:
         return datetime.now(timezone.utc)
 
@@ -73,8 +79,7 @@ def parse_timestamp(value: Any) -> datetime:
 
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
-
-    return parsed
+    return parsed.astimezone(timezone.utc)
 
 
 def _money_to_cents(value: Any, *, event_type: str | None) -> int:
@@ -89,7 +94,6 @@ def _money_to_cents(value: Any, *, event_type: str | None) -> int:
     else:
         numeric = float(value)
 
-    # Throne contribution payloads may use minor units.
     if event_type == "contribution_purchased":
         return int(round(numeric))
 
@@ -117,7 +121,6 @@ def build_fallback_hash(
             currency,
         ]
     )
-
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -133,13 +136,11 @@ def parse_throne_send_payload(
         payload.get("eventId"),
         payload.get("event_id"),
     )
-
     event_type = _first_str(
         payload.get("type"),
         payload.get("eventType"),
         payload.get("event_type"),
     )
-
     order_id = _first_str(
         data.get("orderId"),
         data.get("order_id"),
@@ -169,7 +170,6 @@ def parse_throne_send_payload(
             if isinstance(candidate, dict):
                 gifter = candidate
                 break
-
         if gifter:
             break
 
@@ -199,7 +199,6 @@ def parse_throne_send_payload(
         payload.get("is_anonymous"),
         payload.get("anonymous"),
     )
-
     if is_anonymous:
         gifter_username = None
 
@@ -210,7 +209,6 @@ def parse_throne_send_payload(
             if isinstance(candidate, dict):
                 item = candidate
                 break
-
         if item:
             break
 
@@ -226,7 +224,6 @@ def parse_throne_send_payload(
         payload.get("giftName"),
         payload.get("gift_name"),
     )
-
     item_image_url = _first_str(
         item.get("imageUrl"),
         item.get("image_url"),
@@ -240,7 +237,6 @@ def parse_throne_send_payload(
         payload.get("itemThumbnailUrl"),
         payload.get("item_thumbnail_url"),
     )
-
     if item_image_url and not item_image_url.startswith(("http://", "https://")):
         item_image_url = None
 
@@ -254,8 +250,11 @@ def parse_throne_send_payload(
         data.get("amount_cents"),
         payload.get("amountCents"),
         payload.get("amount_cents"),
+        payload.get("priceCents"),
+        payload.get("price_cents"),
+        item.get("amountCents"),
+        item.get("amount_cents"),
     )
-
     if amount_source is not None:
         amount_cents = int(amount_source)
     else:
@@ -266,8 +265,12 @@ def parse_throne_send_payload(
                 item.get("amount"),
                 data.get("amountUsd"),
                 data.get("amount_usd"),
+                data.get("priceUsd"),
+                data.get("price_usd"),
                 payload.get("amountUsd"),
                 payload.get("amount_usd"),
+                payload.get("priceUsd"),
+                payload.get("price_usd"),
             ),
             event_type=event_type,
         )
@@ -282,7 +285,6 @@ def parse_throne_send_payload(
         payload.get("amountHidden"),
         payload.get("hideAmount"),
     )
-
     if is_private:
         amount_cents = 0
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
-from rob.config.settings import configure_logging, load_settings
+from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 
 
 async def main() -> None:
-    settings = load_settings()
+    settings = load_base_settings()
     configure_logging(settings.log_level)
 
     database = Database(settings.database_url)

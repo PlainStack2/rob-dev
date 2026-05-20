@@ -6,22 +6,23 @@ from typing import Any
 
 from aiohttp import web
 
-from rob.config.settings import Settings
+from rob.config.settings import WebhookSettings
 from rob.database.connection import Database
+from rob.database.repositories.bot_state import BotStateRepository
+from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.throne_creators import ThroneCreatorsRepository
+from rob.services.maintenance_service import MaintenanceService
 from rob.services.send_service import SendService
-from rob.throne.payloads import parse_throne_send_payload
-from rob.throne.security import secret_matches
+from rob.services.throne_service import ThroneService
+from rob.throne.payloads import is_supported_event_type, parse_throne_send_payload
+from rob.throne.security import (
+    build_signed_message,
+    secret_matches,
+    validate_timestamp_header,
+    verify_ed25519_signature,
+)
 
 log = logging.getLogger(__name__)
-
-
-ACCEPTED_EVENT_TYPES = {
-    "gift_purchased",
-    "contribution_purchased",
-    "gift_crowdfunded",
-    "item_purchased",
-}
 
 
 async def handle_health(request: web.Request) -> web.Response:
@@ -30,106 +31,111 @@ async def handle_health(request: web.Request) -> web.Response:
 
 async def handle_throne_webhook(request: web.Request) -> web.Response:
     database: Database = request.app["database"]
-    settings: Settings = request.app["settings"]
+    settings: WebhookSettings = request.app["settings"]
+    throne: ThroneService = request.app["throne_service"]
 
     creator_id = request.match_info["creator_id"]
     provided_secret = request.match_info["secret"]
 
     raw_body = await request.read()
 
+    timestamp_header = request.headers.get(settings.throne_webhook_timestamp_header)
+    signature_header = request.headers.get(settings.throne_webhook_signature_header, "").strip()
+
+    if settings.throne_webhook_require_signature:
+        if not validate_timestamp_header(
+            timestamp_header,
+            max_skew_seconds=settings.throne_webhook_max_timestamp_skew_seconds,
+        ):
+            return web.json_response({"ok": False, "error": "invalid_timestamp"}, status=401)
+        if not settings.throne_public_key_pem:
+            return web.json_response({"ok": False, "error": "signature_not_configured"}, status=401)
+        message = build_signed_message(
+            timestamp=timestamp_header or "",
+            raw_body=raw_body,
+            signed_message_format=settings.throne_webhook_signed_message_format,
+        )
+        if not verify_ed25519_signature(
+            public_key_pem=settings.throne_public_key_pem,
+            signature_hex=signature_header,
+            message=message,
+        ):
+            return web.json_response({"ok": False, "error": "invalid_signature"}, status=401)
+
     try:
         payload: dict[str, Any] = json.loads(raw_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return web.json_response(
-            {"ok": False, "error": "invalid_json"},
-            status=400,
-        )
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
 
     if settings.throne_webhook_debug_log_payload:
         log.info("Throne webhook payload for %s: %s", creator_id, payload)
 
-    async with database.transaction() as connection:
-        creators = ThroneCreatorsRepository(connection)
-        matching_creators = await creators.get_by_creator_id(
-            throne_creator_id=creator_id,
+    creators = ThroneCreatorsRepository(database)
+    matching_creators = await creators.get_by_creator_id(creator_id)
+
+    matched_creator = None
+    for creator in matching_creators:
+        if secret_matches(
+            provided_secret=provided_secret,
+            stored_secret=creator.webhook_secret,
+            stored_secret_hash=creator.webhook_secret_hash,
+        ):
+            matched_creator = creator
+            break
+
+    if matched_creator is None:
+        return web.json_response(
+            {"ok": False, "error": "creator_not_found_or_secret_invalid"},
+            status=403,
         )
 
-        matched_creator = None
-
-        for creator in matching_creators:
-            if secret_matches(
-                provided_secret=provided_secret,
-                stored_secret=creator.webhook_secret,
-                stored_secret_hash=creator.webhook_secret_hash,
-            ):
-                matched_creator = creator
-                break
-
-        if matched_creator is None:
-            return web.json_response(
-                {"ok": False, "error": "creator_not_found_or_secret_invalid"},
-                status=403,
-            )
-
-        parsed = parse_throne_send_payload(
-            creator_id=creator_id,
-            payload=payload,
-        )
-
-        if parsed.event_type and parsed.event_type not in ACCEPTED_EVENT_TYPES:
-            return web.json_response(
-                {
-                    "ok": True,
-                    "ignored": True,
-                    "event_type": parsed.event_type,
-                }
-            )
-
-        send_service = SendService(connection)
-
-        send_id = await send_service.record_throne_send(
-            guild_id=matched_creator.guild_id,
-            domme_id=matched_creator.domme_id,
-            domme_user_id=matched_creator.discord_user_id,
-            payload=parsed,
-        )
-
-        await creators.mark_webhook_success(
-            creator_id=matched_creator.id,
-            when=parsed.purchased_at,
-        )
-
-    if send_id is None:
+    parsed = parse_throne_send_payload(creator_id=creator_id, payload=payload)
+    if not is_supported_event_type(parsed.event_type):
+        await creators.touch_successful_event(matched_creator.id)
         return web.json_response(
             {
                 "ok": True,
-                "duplicate": True,
+                "ignored": True,
+                "event_type": parsed.event_type,
             }
         )
 
-    return web.json_response(
-        {
-            "ok": True,
-            "inserted": True,
-            "send_id": send_id,
-        }
+    maintenance = MaintenanceService(BotStateRepository(database))
+    send_service = SendService(
+        sends=SendsRepository(database),
+        subs=request.app["subs_repository"],
+        maintenance=maintenance,
+        throne=throne,
     )
+    send = await send_service.record_throne_send(
+        creator=matched_creator,
+        payload=parsed,
+    )
+    await creators.touch_successful_event(matched_creator.id)
+
+    if send is None:
+        return web.json_response({"ok": True, "duplicate": True})
+
+    return web.json_response({"ok": True, "inserted": True, "send_id": send.id})
 
 
 def create_webhook_app(
     *,
-    settings: Settings,
+    settings: WebhookSettings,
     database: Database,
 ) -> web.Application:
-    app = web.Application()
+    from rob.database.repositories.subs import SubsRepository
 
+    app = web.Application()
     app["settings"] = settings
     app["database"] = database
-
+    app["throne_service"] = ThroneService()
+    app["subs_repository"] = SubsRepository(database)
     app.router.add_get("/health", handle_health)
-    app.router.add_post(
-        "/throne/webhook/{creator_id}/{secret}",
-        handle_throne_webhook,
-    )
+    app.router.add_post("/throne/webhook/{creator_id}/{secret}", handle_throne_webhook)
 
+    async def close_throne_service(_app: web.Application) -> None:
+        await _app["throne_service"].close()
+
+    app.on_cleanup.append(close_throne_service)
     return app
