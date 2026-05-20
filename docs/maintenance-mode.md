@@ -13,6 +13,7 @@ It is controlled from backend shell commands, not from broad Discord admin comma
 - Webhook sends are inserted as `queued_maintenance`.
 - The bot does not post queued sends to Discord.
 - Public leaderboards continue to reflect posted sends only.
+- Legacy imported sends that were seeded as `posted` stay out of the queue.
 
 ## After Maintenance
 
