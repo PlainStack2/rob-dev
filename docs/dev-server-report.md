@@ -54,6 +54,7 @@
 ## 2. Branch Details
 
 - Base branch used: `rebuild/rob-v2-foundation`
+- Base branch tip incorporated during final recheck: `3bfba90`
 - New branch name: `rebuild/dev-online-services`
 - Commit summary:
   - split webhook and Discord runtimes
