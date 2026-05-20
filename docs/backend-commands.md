@@ -1,22 +1,32 @@
 # Backend Commands
 
-Rob should be manageable from the server using backend shell commands.
+Use [`scripts/robctl`](/Users/patfaint/Documents/New%20project/scripts/robctl) from the server checkout, or install a shell alias that points to it.
 
-Planned commands:
+## Supported commands
 
 ```bash
-rob status
-rob logs
-rob restart
+scripts/robctl status
+scripts/robctl logs bot
+scripts/robctl logs webhook
+scripts/robctl restart bot
+scripts/robctl restart webhook
+scripts/robctl restart all
 
-rob maintenance status
-rob maintenance on "reason"
-rob maintenance off
+scripts/robctl maintenance status
+scripts/robctl maintenance on "Deploying schema changes"
+scripts/robctl maintenance off
 
-rob queue status
-rob queue flush
+scripts/robctl queue status
+scripts/robctl queue flush
 
-rob leaderboard refresh
+scripts/robctl leaderboard refresh
 
-rob count status
-rob count set 123
+scripts/robctl count status
+scripts/robctl count set 123
+```
+
+## Notes
+
+- `maintenance on/off`, `queue status`, `queue flush`, `leaderboard refresh`, and `count` commands talk directly to PostgreSQL through `scripts.ops`.
+- `logs` and `restart` use `journalctl` and `systemctl`, so they are meant for the server where the service is installed.
+- `queue flush` refuses to run while maintenance mode is still enabled.

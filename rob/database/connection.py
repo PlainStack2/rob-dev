@@ -10,15 +10,14 @@ log = logging.getLogger(__name__)
 
 
 class Database:
-
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
-        self.pool: assyncpg.Pool | None = None
+        self.pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
         if self.pool is not None:
             return
-        
+
         self.pool = await asyncpg.create_pool(
             dsn=self.database_url,
             min_size=1,
@@ -29,10 +28,9 @@ class Database:
         log.info("Connected to PostgreSQL.")
 
     async def close(self) -> None:
-
         if self.pool is None:
             return
-        
+
         await self.pool.close()
         self.pool = None
 
@@ -41,7 +39,7 @@ class Database:
     def require_pool(self) -> asyncpg.Pool:
         if self.pool is None:
             raise RuntimeError("Database connection pool has not been opened.")
-        
+
         return self.pool
 
     @asynccontextmanager
@@ -56,7 +54,7 @@ class Database:
         async with self.acquire() as connection:
             async with connection.transaction():
                 yield connection
-    
+
     async def health_check(self) -> bool:
         try:
             async with self.acquire() as connection:
@@ -64,5 +62,5 @@ class Database:
         except Exception:
             log.exception("PostgreSQL health check failed.")
             return False
-        
+
         return result == 1

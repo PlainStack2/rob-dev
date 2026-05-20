@@ -1,0 +1,17 @@
+name: Deploy Bot Dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run bot deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.BOT_DEV_HOST }}
+          username: ${{ secrets.BOT_DEV_USER }}
+          key: ${{ secrets.BOT_DEV_SSH_KEY }}
+          port: ${{ secrets.BOT_DEV_PORT }}
+          script: /opt/rob-bot/deploy-bot-dev.sh

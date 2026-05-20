@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from rob.config.settings import configure_logging, load_settings
+from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -653,7 +653,7 @@ async def main() -> None:
     if not sqlite_path.exists():
         raise FileNotFoundError(f"SQLite DB not found: {sqlite_path}")
 
-    settings = load_settings()
+    settings = load_base_settings()
     configure_logging(settings.log_level)
 
     sqlite = sqlite3.connect(sqlite_path)

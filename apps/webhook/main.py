@@ -5,7 +5,7 @@ import logging
 
 from aiohttp import web
 
-from rob.config.settings import configure_logging, load_settings
+from rob.config.settings import configure_logging, load_webhook_settings
 from rob.database.connection import Database
 from rob.throne.webhooks import create_webhook_app
 
@@ -13,17 +13,13 @@ log = logging.getLogger(__name__)
 
 
 async def main_async() -> None:
-    settings = load_settings()
+    settings = load_webhook_settings()
     configure_logging(settings.log_level)
 
     database = Database(settings.database_url)
     await database.connect()
 
-    app = create_webhook_app(
-        settings=settings,
-        database=database,
-    )
-
+    app = create_webhook_app(settings=settings, database=database)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
 
@@ -32,7 +28,6 @@ async def main_async() -> None:
         host=settings.throne_webhook_host,
         port=settings.throne_webhook_port,
     )
-
     await site.start()
 
     log.info(

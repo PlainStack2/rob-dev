@@ -1,6 +1,6 @@
 # Discord Commands
 
-Rob should keep Discord commands simple and user-facing.
+Rob keeps Discord commands user-facing and narrow.
 
 ## Public/User Commands
 
@@ -19,6 +19,6 @@ Rob should keep Discord commands simple and user-facing.
 
 ## Removed/Not Planned
 
-Rob should not expose broad admin controls through Discord.
+Rob does not expose broad admin dashboards, event control commands, or deployment actions in Discord.
 
-Maintenance mode, queue management, service restarts, database checks, and deployment actions should be handled from the backend using shell commands.
+Maintenance mode, queue management, service restarts, database checks, and leaderboard refresh requests should be handled from the backend with `scripts/robctl`.

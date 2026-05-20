@@ -1,25 +1,35 @@
-### `docs/maintenance-mode.md`
-
-````markdown
 # Maintenance Mode
 
-Maintenance mode prevents Rob from posting new send notifications to Discord while maintenance is active.
+Maintenance mode is stored in PostgreSQL `bot_state` using:
+
+- `maintenance_mode`
+- `maintenance_reason`
+
+It is controlled from backend shell commands, not from broad Discord admin commands.
 
 ## During Maintenance
 
 - Incoming sends are still saved to PostgreSQL.
-- Sends are marked as queued.
-- Discord send notifications are not posted.
-- Public leaderboards are not refreshed.
+- Webhook sends are inserted as `queued_maintenance`.
+- The bot does not post queued sends to Discord.
+- Public leaderboards continue to reflect posted sends only.
 
 ## After Maintenance
 
-When maintenance mode is disabled:
+When maintenance mode is disabled, the bot queue worker:
 
-1. Rob finds queued sends.
-2. Rob posts send notifications oldest-first.
-3. Rob marks each send as posted.
-4. Rob refreshes leaderboards once.
-5. Rob reports any failures through backend logs.
+1. Releases `queued_maintenance` sends back to `pending`.
+2. Processes them oldest-first.
+3. Marks successful posts as `posted`.
+4. Marks failures as `failed`.
+5. Refreshes public leaderboards.
 
-Maintenance mode should be controlled from the backend, not Discord.
+## Commands
+
+```bash
+scripts/robctl maintenance status
+scripts/robctl maintenance on "reason"
+scripts/robctl maintenance off
+scripts/robctl queue status
+scripts/robctl queue flush
+```
