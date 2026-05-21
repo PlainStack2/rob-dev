@@ -27,5 +27,5 @@ def domme_registered_card() -> RenderedMessage:
     )
 
 
-def throne_setup_card(description: str) -> RenderedMessage:
-    return render(make_card(title="Throne Tracking Setup!", body=description, color=COLOR_PRIMARY))
+def throne_setup_card(description: str, *, image_url: str | None = None) -> RenderedMessage:
+    return render(make_card(title="Throne Tracking Setup!", body=description, color=COLOR_PRIMARY, image_url=image_url))

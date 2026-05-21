@@ -44,6 +44,15 @@ class RenderedMessage:
     view: discord.ui.View | discord.ui.LayoutView | None = None
     mode: Literal["components_v2", "embed_fallback"] = "embed_fallback"
 
+    def with_view(self, view: discord.ui.View | discord.ui.LayoutView | None) -> "RenderedMessage":
+        return RenderedMessage(
+            content=self.content,
+            embed=self.embed,
+            embeds=self.embeds,
+            view=view,
+            mode=self.mode,
+        )
+
     def send_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {"content": self.content, "view": self.view}
         if self.embed is not None:
@@ -71,7 +80,13 @@ def supports_components_v2() -> bool:
 
 
 def _render_v2(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None) -> RenderedMessage:
-    layout = view if isinstance(view, discord.ui.LayoutView) else discord.ui.LayoutView(timeout=getattr(view, "timeout", 1800) if view else 1800)
+    # Keep interactive button views stable. If a classic View is supplied,
+    # use embed fallback instead of attempting to transplant children into a
+    # LayoutView container.
+    if view is not None and not isinstance(view, discord.ui.LayoutView):
+        return _render_embed(card, view=view)
+
+    layout = view if isinstance(view, discord.ui.LayoutView) else discord.ui.LayoutView(timeout=1800)
     items: list[Any] = [discord.ui.TextDisplay(f"# {card.title}"), discord.ui.TextDisplay(card.body)]
     items.append(discord.ui.Separator())
     for section in card.sections:
@@ -88,9 +103,6 @@ def _render_v2(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView |
     container = discord.ui.Container(*items, accent_color=card.color)
     if isinstance(layout, discord.ui.LayoutView):
         layout.add_item(container)
-        if view and not isinstance(view, discord.ui.LayoutView):
-            for item in view.children:
-                layout.add_item(item)
     return RenderedMessage(view=layout, mode="components_v2")
 
 
