@@ -33,14 +33,16 @@ class LeaderboardsCog(commands.Cog):
         await interaction.response.send_message(
             embeds=[
                 leaderboard_embed(
-                    title="Rob | Domme Leaderboard",
+                    title="Dom/me Sends Leaderboard",
                     entries=dommes,
                     summary=summary,
+                    footer="To join the leaderboard and make it into the top 10, run /register domme.",
                 ),
                 leaderboard_embed(
-                    title="Rob | Sub Leaderboard",
+                    title="Sub Sends Leaderboard",
                     entries=subs,
                     summary=summary,
+                    footer="Sub leaderboard updates from tracked sends.",
                 ),
             ],
             ephemeral=True,

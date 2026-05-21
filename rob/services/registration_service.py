@@ -17,6 +17,16 @@ from rob.utils.text import collapse_whitespace
 _RESERVED_SUB_NAMES = {"anonymous", "anon", "private", "hidden"}
 
 
+def sanitize_webhook_base_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip().strip("\"'")
+    while cleaned.startswith("="):
+        cleaned = cleaned[1:].lstrip()
+    cleaned = cleaned.rstrip("/")
+    return cleaned or None
+
+
 @dataclass(frozen=True)
 class DommeRegistrationResult:
     domme: Domme
@@ -47,7 +57,7 @@ class RegistrationService:
         self.throne_creators = throne_creators
         self.blacklist = blacklist
         self.throne = throne
-        self.webhook_base_url = webhook_base_url.rstrip("/") if webhook_base_url else None
+        self.webhook_base_url = sanitize_webhook_base_url(webhook_base_url)
 
     async def register_domme(
         self,
