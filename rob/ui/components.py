@@ -2,26 +2,30 @@ from __future__ import annotations
 
 import discord
 
+from rob.ui.render import CardAction, CardSection, RobCard, RenderedMessage, render_card
 from rob.ui.theme import COLOR_INFO
 
 
-def make_embed(
+def make_card(
     *,
     title: str,
-    description: str | None = None,
+    body: str,
     color: discord.Colour | None = None,
     footer: str | None = None,
-) -> discord.Embed:
-    embed = discord.Embed(
+    sections: list[CardSection] | None = None,
+    image_url: str | None = None,
+    actions: list[CardAction] | None = None,
+) -> RobCard:
+    return RobCard(
         title=title,
-        description=description,
-        colour=color or COLOR_INFO,
+        body=body,
+        color=color or COLOR_INFO,
+        footer=footer,
+        sections=sections or [],
+        image_url=image_url,
+        actions=actions or [],
     )
-    if footer:
-        embed.set_footer(text=footer)
-    return embed
 
 
-def add_field(embed: discord.Embed, *, name: str, value: str, inline: bool = True) -> discord.Embed:
-    embed.add_field(name=name, value=value, inline=inline)
-    return embed
+def render(card: RobCard, *, view: discord.ui.View | None = None) -> RenderedMessage:
+    return render_card(card, view=view)

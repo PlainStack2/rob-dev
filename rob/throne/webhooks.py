@@ -14,7 +14,7 @@ from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
-from rob.throne.payloads import is_supported_event_type, parse_throne_send_payload
+from rob.throne.payloads import is_supported_event_type, is_test_webhook_payload, parse_throne_send_payload
 from rob.throne.security import (
     build_signed_message,
     secret_matches,
@@ -90,6 +90,10 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         )
 
     parsed = parse_throne_send_payload(creator_id=creator_id, payload=payload)
+    if is_test_webhook_payload(payload, parsed):
+        await creators.mark_setup_verified(matched_creator.id)
+        return web.json_response({"ok": True, "setup_verified": True})
+
     if not is_supported_event_type(parsed.event_type):
         await creators.touch_successful_event(matched_creator.id)
         return web.json_response(

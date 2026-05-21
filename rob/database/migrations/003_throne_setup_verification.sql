@@ -1,0 +1,3 @@
+ALTER TABLE throne_creators
+ADD COLUMN IF NOT EXISTS last_test_webhook_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS setup_verified_at TIMESTAMPTZ;

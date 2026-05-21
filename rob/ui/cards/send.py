@@ -3,34 +3,27 @@ from __future__ import annotations
 import discord
 
 from rob.database.repositories.models import SendRecord
-from rob.ui.components import add_field, make_embed
+from rob.ui.components import make_card, render
+from rob.ui.render import CardSection
 from rob.ui.theme import COLOR_INFO
 from rob.utils.money import format_money_from_cents
 from rob.utils.time import format_timestamp
 
 
-def send_embed(
-    *,
-    send: SendRecord,
-    domme_label: str,
-    sub_label: str | None,
-) -> discord.Embed:
-    amount_text = (
-        "Private / hidden"
-        if send.is_private and send.amount_cents == 0
-        else format_money_from_cents(send.amount_cents, send.currency)
-    )
-    embed = make_embed(
+def send_embed(*, send: SendRecord, domme_label: str, sub_label: str | None) -> discord.Embed:
+    amount_text = "Private / hidden" if send.is_private and send.amount_cents == 0 else format_money_from_cents(send.amount_cents, send.currency)
+    card = make_card(
         title="Rob | New Send",
-        description=send.item_name or "A new send was logged.",
+        body=send.item_name or "A new send was logged.",
         color=COLOR_INFO,
         footer="Posted from the shared send queue.",
+        sections=[
+            CardSection(title="Domme", text=domme_label, inline=True),
+            CardSection(title="Sender", text=sub_label or "Unclaimed", inline=True),
+            CardSection(title="Amount", text=amount_text, inline=True),
+            CardSection(title="Method", text=send.method or send.source, inline=True),
+            CardSection(title="Sent At", text=format_timestamp(send.sent_at), inline=False),
+        ],
+        image_url=send.item_image_url,
     )
-    add_field(embed, name="Domme", value=domme_label)
-    add_field(embed, name="Sender", value=sub_label or "Unclaimed")
-    add_field(embed, name="Amount", value=amount_text)
-    add_field(embed, name="Method", value=send.method or send.source)
-    add_field(embed, name="Sent At", value=format_timestamp(send.sent_at), inline=False)
-    if send.item_image_url:
-        embed.set_thumbnail(url=send.item_image_url)
-    return embed
+    return render(card).embed

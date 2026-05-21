@@ -21,3 +21,10 @@
 ## Notes
 
 This patch intentionally preserves split webhook/bot services and PostgreSQL-only runtime architecture, and does not reintroduce event-bot/event-window behavior.
+
+
+## Throne test webhook handling
+- Test/setup webhook payloads are detected before send insertion.
+- Test events update creator setup verification timestamps (`setup_verified_at`, `last_test_webhook_at`, `last_successful_event_at`) and return `{"ok": true, "setup_verified": true}`.
+- Test events do not insert `sends` rows and do not enter the Discord send tracker queue.
+- Runtime currently renders registration/setup UI with embed fallback via a Components V2 compatibility layer until discord.py exposes stable V2 APIs.
