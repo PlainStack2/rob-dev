@@ -10,5 +10,5 @@ def make_card(*, title: str, body: str, color: discord.Colour | None = None, foo
     return RobCard(title=title, body=body, color=color or COLOR_INFO, footer=footer, sections=sections or [], image_url=image_url, actions=actions or [])
 
 
-def render(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None = None) -> RenderedMessage:
+def render(card: RobCard, *, view: discord.ui.LayoutView | None = None) -> RenderedMessage:
     return render_card(card, view=view)

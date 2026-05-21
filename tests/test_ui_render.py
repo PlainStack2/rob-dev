@@ -1,37 +1,45 @@
 from __future__ import annotations
 
-import discord
+import pytest
 
-from rob.ui.render import RenderedMessage
 from rob.ui.cards.registration import throne_setup_card
+from rob.ui.render import CardSection, RenderedMessage, RobCard, render_card, supports_components_v2
 
 
-class _DummyView(discord.ui.View):
-    pass
+def test_components_v2_support_check_exposes_required_runtime():
+    assert supports_components_v2() is True
 
 
-def test_with_view_overrides_view_without_duplicate_kwargs_issue():
-    base = RenderedMessage(content="hi", mode="embed_fallback")
-    msg = base.with_view(_DummyView())
-    kwargs = msg.send_kwargs()
-    assert "view" in kwargs
-    assert isinstance(kwargs["view"], discord.ui.View)
+def test_render_card_returns_layoutview_not_embed():
+    msg = render_card(RobCard(title="T", body="B", sections=[CardSection(title="S", text="V")]))
+    assert msg.view is not None
+    assert msg.mode == "components_v2"
 
 
-def test_v2_edit_kwargs_clear_legacy_fields():
-    msg = RenderedMessage(content="x", mode="components_v2")
+def test_send_kwargs_do_not_include_embed_fields():
+    kwargs = RenderedMessage(view=None).send_kwargs()
+    assert "embed" not in kwargs
+    assert "embeds" not in kwargs
+
+
+def test_v2_edit_kwargs_clear_legacy_fields_and_keep_view():
+    msg = render_card(RobCard(title="T", body="B"))
     kwargs = msg.edit_kwargs()
     assert kwargs["content"] is None
     assert kwargs["embed"] is None
     assert kwargs["embeds"] is None
     assert kwargs["attachments"] is None
+    assert kwargs["view"] is msg.view
 
 
-def test_setup_success_card_accepts_image_url_in_v2_or_fallback():
+def test_setup_success_card_accepts_image_url_without_embed_mutation():
     msg = throne_setup_card("ok", image_url="https://example.com/test.gif")
-    if msg.mode == "embed_fallback":
-        assert msg.embed is not None
-        assert msg.embed.image.url == "https://example.com/test.gif"
-    else:
-        assert msg.embed is None
-        assert msg.view is not None
+    assert msg.view is not None
+
+
+def test_render_card_raises_if_components_v2_missing(monkeypatch: pytest.MonkeyPatch):
+    import discord
+
+    monkeypatch.delattr(discord.ui, "LayoutView", raising=False)
+    with pytest.raises(RuntimeError):
+        render_card(RobCard(title="X", body="Y"))

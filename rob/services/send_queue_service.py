@@ -9,7 +9,7 @@ from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.sends import SendsRepository
 from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
-from rob.ui.cards.send import send_embed
+from rob.ui.cards.send import send_card
 
 log = logging.getLogger(__name__)
 
@@ -106,13 +106,8 @@ class SendQueueService:
             return False
 
         try:
-            message = await channel.send(
-                embed=send_embed(
-                    send=send,
-                    domme_label=f"<@{send.domme_user_id}>",
-                    sub_label=f"<@{send.sub_user_id}>" if send.sub_user_id else send.sub_name,
-                )
-            )
+            msg = send_card(send=send, domme_label=f"<@{send.domme_user_id}>", sub_label=f"<@{send.sub_user_id}>" if send.sub_user_id else send.sub_name)
+            message = await channel.send(**msg.send_kwargs())
         except discord.HTTPException as exc:
             await self.sends.mark_failed(send.id, error=f"Discord post failed: {exc}")
             return False

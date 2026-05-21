@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_embed
+from rob.ui.cards.errors import error_card
 from rob.ui.cards.registration import domme_registered_card, registration_card, throne_setup_card
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 SUCCESS_GIF_URL = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMDN5OW9vZTYyODl4MnRmd3A5aGVxeWVkNWF2eTY4ZnhwdXVpeW4wYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uLiEXaouJVkuA/giphy.gif"
 
 
-class ThroneSetupView(discord.ui.View):
+class ThroneSetupView(discord.ui.LayoutView):
     def __init__(self, *, creator_id: int, webhook_url: str, send_track_channel_id: int | None) -> None:
         super().__init__(timeout=1800)
         self.creator_id = creator_id
@@ -34,8 +34,8 @@ class ThroneSetupView(discord.ui.View):
             "Once done, come back here and I'll let you know if it worked.\n\n"
             f"The almighty link:\n```\n{self.webhook_url}\n```\nDid it work?"
         )
-        msg = throne_setup_card(body)
-        await interaction.response.edit_message(**msg.with_view(ThroneVerifyView(self.creator_id, self.send_track_channel_id)).edit_kwargs())
+        msg = throne_setup_card(body, view=ThroneVerifyView(self.creator_id, self.send_track_channel_id))
+        await interaction.response.edit_message(**msg.edit_kwargs())
 
     @discord.ui.button(label="Not Now", style=discord.ButtonStyle.secondary)
     async def not_now(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -43,10 +43,10 @@ class ThroneSetupView(discord.ui.View):
             "No worries — your Throne profile is linked, but tracking won't start until the webhook URL is added to Throne.\n\n"
             "You can run /register domme again when you're ready."
         )
-        await interaction.response.edit_message(**msg.with_view(None).edit_kwargs())
+        await interaction.response.edit_message(**msg.edit_kwargs())
 
 
-class ThroneVerifyView(discord.ui.View):
+class ThroneVerifyView(discord.ui.LayoutView):
     def __init__(self, creator_id: int, send_track_channel_id: int | None) -> None:
         super().__init__(timeout=1800)
         self.creator_id = creator_id
@@ -64,23 +64,24 @@ class ThroneVerifyView(discord.ui.View):
                 "Please read the information below so you know what Rob collects and how it's used.",
                 image_url=SUCCESS_GIF_URL,
             )
-            await interaction.response.edit_message(**success_msg.with_view(None).edit_kwargs())
+            await interaction.response.edit_message(**success_msg.edit_kwargs())
             info_msg = registration_card(
-                    title="What Rob Collects",
-                    summary="Rob only stores the information needed to track and display Throne sends inside this Discord server.",
-                    details=[
-                        ("Collected information", "- Your Discord user ID\n- Your Throne handle and creator ID\n- Public wishlist item names\n- Public wishlist item prices\n- Public wishlist item images, when available\n- Send/purchase amounts provided by Throne webhook events\n- Item names and item images from send events\n- Sender/display names provided by Throne, when available\n- Webhook status details, such as when Rob last received a successful event"),
-                        ("How it is used", "- To post send notifications in the configured send tracking channel\n- To update Domme/Sub leaderboards\n- To prevent duplicate webhook events being counted twice\n- To help server staff troubleshoot tracking issues\n- To let you rebuild your webhook URL if it needs to be rotated"),
-                        ("Important notes", "- Rob does not need your Throne password.\n- Rob cannot access private Throne account settings.\n- Your webhook URL should be treated like a secret.\n- If you think your webhook URL was shared accidentally, ask staff to rebuild it."),
-                    ],
-                )
+                title="What Rob Collects",
+                summary="Rob only stores the information needed to track and display Throne sends inside this Discord server.",
+                details=[
+                    ("Collected information", "- Your Discord user ID\n- Your Throne handle and creator ID\n- Public wishlist item names\n- Public wishlist item prices\n- Public wishlist item images, when available\n- Send/purchase amounts provided by Throne webhook events\n- Item names and item images from send events\n- Sender/display names provided by Throne, when available\n- Webhook status details, such as when Rob last received a successful event"),
+                    ("How it is used", "- To post send notifications in the configured send tracking channel\n- To update Domme/Sub leaderboards\n- To prevent duplicate webhook events being counted twice\n- To help server staff troubleshoot tracking issues\n- To let you rebuild your webhook URL if it needs to be rotated"),
+                    ("Important notes", "- Rob does not need your Throne password.\n- Rob cannot access private Throne account settings.\n- Your webhook URL should be treated like a secret.\n- If you think your webhook URL was shared accidentally, ask staff to rebuild it."),
+                ],
+            )
             await interaction.followup.send(**info_msg.send_kwargs())
             return
         msg = throne_setup_card(
             "Not seeing it yet.\n\nPlease make sure you clicked Save Settings in Throne, then click Test Webhook again. "
-            "Once Throne shows a success message, press Yes here again."
+            "Once Throne shows a success message, press Yes here again.",
+            view=self,
         )
-        await interaction.response.edit_message(**msg.with_view(self).edit_kwargs())
+        await interaction.response.edit_message(**msg.edit_kwargs())
 
     @discord.ui.button(label="Not Yet", style=discord.ButtonStyle.secondary)
     async def not_yet(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -97,68 +98,41 @@ class RegistrationCog(commands.Cog):
     @app_commands.describe(throne="Your Throne profile URL or username.")
     async def register_domme(self, interaction: discord.Interaction, throne: str) -> None:
         if interaction.guild is None or interaction.user is None:
-            await interaction.response.send_message(embed=error_embed("This command can only be used in a server."), ephemeral=True)
+            await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True)
         try:
-            result = await self.bot.registration_service.register_domme(
-                guild_id=interaction.guild.id,
-                discord_user_id=interaction.user.id,
-                throne_input=throne,
-            )
+            result = await self.bot.registration_service.register_domme(guild_id=interaction.guild.id, discord_user_id=interaction.user.id, throne_input=throne)
         except ValueError as exc:
-            await interaction.followup.send(embed=error_embed("Domme registration could not be completed.", str(exc)), ephemeral=True)
+            await interaction.followup.send(**error_card("Domme registration could not be completed.", str(exc)).send_kwargs(), ephemeral=True)
             return
 
         if not result.webhook_url:
-            await interaction.followup.send(embed=error_embed("Webhook URL setup is unavailable.", "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server."), ephemeral=True)
+            await interaction.followup.send(**error_card("Webhook URL setup is unavailable.", "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server.").send_kwargs(), ephemeral=True)
             return
 
         settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
         try:
-            dm_msg = throne_setup_card(
-                    "Howdy Partner!\n\nYou've received this DM because you've enabled Throne tracking for yourself. Before we can continue, we'll need you to do some extra steps inside Throne first."
-                )
-            await interaction.user.send(**dm_msg.with_view(ThroneSetupView(
-                    creator_id=result.creator.id,
-                    webhook_url=result.webhook_url,
-                    send_track_channel_id=settings.send_track_channel_id if settings else None,
-                )).send_kwargs())
+            dm_msg = throne_setup_card("Howdy Partner!\n\nYou've received this DM because you've enabled Throne tracking for yourself. Before we can continue, we'll need you to do some extra steps inside Throne first.", view=ThroneSetupView(creator_id=result.creator.id, webhook_url=result.webhook_url, send_track_channel_id=settings.send_track_channel_id if settings else None))
+            await interaction.user.send(**dm_msg.send_kwargs())
         except discord.HTTPException:
-            await interaction.followup.send(
-                embed=error_embed(
-                    "You're registered, but Rob couldn't DM you.",
-                    "Please enable Direct Messages, then run /register domme again.",
-                ),
-                ephemeral=True,
-            )
+            await interaction.followup.send(**error_card("You're registered, but Rob couldn't DM you.", "Please enable Direct Messages, then run /register domme again.").send_kwargs(), ephemeral=True)
             return
 
-        registered = domme_registered_card()
-        await interaction.followup.send(**registered.send_kwargs(), ephemeral=True)
+        await interaction.followup.send(**domme_registered_card().send_kwargs(), ephemeral=True)
 
     @register_group.command(name="sub", description="Register a sending name to claim sends.")
     @app_commands.describe(send_name="The exact name you use on Throne sends.")
     async def register_sub(self, interaction: discord.Interaction, send_name: str) -> None:
         if interaction.guild is None or interaction.user is None:
-            await interaction.response.send_message(embed=error_embed("This command can only be used in a server."), ephemeral=True)
+            await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
-
         await interaction.response.defer(ephemeral=True)
         try:
-            result = await self.bot.registration_service.register_sub(
-                guild_id=interaction.guild.id,
-                discord_user_id=interaction.user.id,
-                send_name=send_name,
-            )
+            result = await self.bot.registration_service.register_sub(guild_id=interaction.guild.id, discord_user_id=interaction.user.id, send_name=send_name)
         except ValueError as exc:
-            await interaction.followup.send(embed=error_embed("Sub registration could not be completed.", str(exc)), ephemeral=True)
+            await interaction.followup.send(**error_card("Sub registration could not be completed.", str(exc)).send_kwargs(), ephemeral=True)
             return
 
-        sub_msg = registration_card(
-                title="Rob | Sub Registered",
-                summary="Your send-claim name is now active.",
-                details=[("Tracked Name", result.sub.send_name)],
-            )
-        await interaction.followup.send(**sub_msg.send_kwargs(), ephemeral=True)
+        await interaction.followup.send(**registration_card(title="Rob | Sub Registered", summary="Your send-claim name is now active.", details=[("Tracked Name", result.sub.send_name)]).send_kwargs(), ephemeral=True)

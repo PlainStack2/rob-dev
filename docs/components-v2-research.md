@@ -28,7 +28,7 @@ The discord.py docs also explicitly state that when editing a message to use `La
 - Cogs that use the card renderer send/edit via `RenderedMessage.send_kwargs()` and `RenderedMessage.edit_kwargs()`.
 
 ## Fallback behaviour
-- If required V2 classes are missing, Rob falls back to classic embed rendering.
+- If required V2 classes are missing, Rob raises a runtime error when V2 classes are unavailable.
 - Fallback mode logs that embed rendering is active.
 - In V2 edit mode, Rob explicitly sends `content=None`, `embed=None`, `embeds=None`, `attachments=None` to avoid stale embed/content artifacts.
 
@@ -41,4 +41,11 @@ The discord.py docs also explicitly state that when editing a message to use `La
 - `Yes` verifies setup for the exact creator row only.
 - Throne test webhook marks setup verification without creating/posting sends.
 - `/leaderboard` uses the shared card renderer.
-- If V2 support is absent, embed fallback still works and logs explain fallback mode.
+- If V2 support is absent, no embed fallback still works and logs explain fallback mode.
+
+
+## Renderer strictness
+- Rob card renderer now requires Discord Components V2 LayoutView/Bot UI Kit components.
+- Classic embed fallback was removed from the new Rob card renderer.
+- If required V2 classes are missing, rendering raises a RuntimeError with missing class names.
+- Any remaining classic embed helpers outside this card renderer are legacy/non-card paths only.

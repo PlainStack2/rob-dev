@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_embed
+from rob.ui.cards.errors import error_card
 from rob.ui.cards.leaderboard import leaderboard_card
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ class LeaderboardsCog(commands.Cog):
     @app_commands.command(name="leaderboard", description="Show the current posted leaderboards.")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None:
-            await interaction.response.send_message(embed=error_embed("This command can only be used in a server."), ephemeral=True)
+            await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
 
         summary = await self.bot.leaderboards_repo.get_summary(interaction.guild.id)
