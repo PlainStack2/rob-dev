@@ -124,6 +124,56 @@ def build_fallback_hash(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+
+
+def _as_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def is_test_webhook_payload(
+    payload: dict[str, Any],
+    parsed: ThroneSendPayload | None = None,
+    *,
+    test_gifter_usernames: set[str] | None = None,
+) -> bool:
+    data = _as_dict(payload.get("data"))
+    event_type = _first_str(payload.get("type"), payload.get("eventType"), payload.get("event_type"), parsed.event_type if parsed else None)
+    event_name = _first_str(payload.get("event"), data.get("event"))
+    payload_kind = _first_str(payload.get("kind"), payload.get("payloadType"), payload.get("payload_type"))
+
+    for text in (event_type, event_name, payload_kind):
+        if text and "test" in text.lower():
+            return True
+
+    boolean_flags = [
+        payload.get("test"),
+        payload.get("isTest"),
+        payload.get("is_test"),
+        data.get("test"),
+        data.get("isTest"),
+        data.get("is_test"),
+    ]
+    if any(_as_bool(v) is True for v in boolean_flags):
+        return True
+
+    usernames = {u.strip().lower() for u in (test_gifter_usernames or {"marie_123"}) if u.strip()}
+    if usernames:
+        gifter = (parsed.gifter_username if parsed else None) or _first_str(data.get("gifterUsername"), data.get("senderUsername"), payload.get("gifterUsername"), payload.get("senderUsername"))
+        if gifter and gifter.strip().lower() in usernames:
+            return True
+
+    item_name = (parsed.item_name if parsed else None) or _first_str(data.get("itemName"), payload.get("itemName"))
+    order_id = (parsed.order_id if parsed else None) or _first_str(data.get("orderId"), payload.get("orderId"))
+    joined = f"{item_name or ''} {order_id or ''}".lower()
+    return any(token in joined for token in ("test", "webhook", "setup"))
 def parse_throne_send_payload(
     *,
     creator_id: str,

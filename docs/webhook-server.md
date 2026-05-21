@@ -44,3 +44,10 @@ The webhook server is the HTTP-only side of Rob.
 - When `THRONE_WEBHOOK_REQUIRE_SIGNATURE=false`, the webhook skips Ed25519 signature validation entirely, but it still requires valid JSON plus a matching `{creator_id}/{secret}` URL pair.
 - For early local or tunnel-based dev, `false` is acceptable while the real Throne public key and signed-message format are still being verified.
 - For stricter shared-dev testing, switch it back to `true` and provide `THRONE_PUBLIC_KEY_PEM` plus the correct header and message-format settings.
+
+
+## Throne test webhook handling
+- Test/setup webhook payloads are detected before send insertion.
+- Test events update creator setup verification timestamps (`setup_verified_at`, `last_test_webhook_at`, `last_successful_event_at`) and return `{"ok": true, "setup_verified": true}`.
+- Test events do not insert `sends` rows and do not enter the Discord send tracker queue.
+- Runtime currently renders registration/setup UI with no embed fallback via a Components V2 compatibility layer until discord.py exposes stable V2 APIs.

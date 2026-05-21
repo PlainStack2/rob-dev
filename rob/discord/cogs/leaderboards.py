@@ -6,8 +6,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_embed
-from rob.ui.cards.leaderboard import leaderboard_embed
+from rob.ui.cards.errors import error_card
+from rob.ui.cards.leaderboard import leaderboard_card
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -20,30 +20,14 @@ class LeaderboardsCog(commands.Cog):
     @app_commands.command(name="leaderboard", description="Show the current posted leaderboards.")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None:
-            await interaction.response.send_message(
-                embed=error_embed("This command can only be used in a server."),
-                ephemeral=True,
-            )
+            await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
 
         summary = await self.bot.leaderboards_repo.get_summary(interaction.guild.id)
         dommes = await self.bot.leaderboards_repo.get_top_dommes(interaction.guild.id)
         subs = await self.bot.leaderboards_repo.get_top_subs(interaction.guild.id)
 
-        await interaction.response.send_message(
-            embeds=[
-                leaderboard_embed(
-                    title="Dom/me Sends Leaderboard",
-                    entries=dommes,
-                    summary=summary,
-                    footer="To join the leaderboard and make it into the top 10, run /register domme.",
-                ),
-                leaderboard_embed(
-                    title="Sub Sends Leaderboard",
-                    entries=subs,
-                    summary=summary,
-                    footer="Sub leaderboard updates from tracked sends.",
-                ),
-            ],
-            ephemeral=True,
-        )
+        dom_msg = leaderboard_card(title="Dom/me Sends Leaderboard", entries=dommes, summary=summary, footer="To join the leaderboard and make it into the top 10, run /register domme.")
+        sub_msg = leaderboard_card(title="Sub Sends Leaderboard", entries=subs, summary=summary, footer="Sub leaderboard updates from tracked sends.")
+        await interaction.response.send_message(**dom_msg.send_kwargs(), ephemeral=True)
+        await interaction.followup.send(**sub_msg.send_kwargs(), ephemeral=True)

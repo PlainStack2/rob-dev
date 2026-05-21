@@ -58,6 +58,8 @@ class ThroneCreator:
     overlay_detected: bool
     last_overlay_check_at: datetime | None
     last_successful_event_at: datetime | None
+    last_test_webhook_at: datetime | None
+    setup_verified_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

@@ -22,6 +22,8 @@ def _build_throne_creator(row: Record) -> ThroneCreator:
         overlay_detected=bool(row["overlay_detected"]),
         last_overlay_check_at=row["last_overlay_check_at"],
         last_successful_event_at=row["last_successful_event_at"],
+        last_test_webhook_at=row["last_test_webhook_at"],
+        setup_verified_at=row["setup_verified_at"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -160,6 +162,23 @@ class ThroneCreatorsRepository:
                     tracking_mode = 'webhook',
                     webhook_connected_at = COALESCE(webhook_connected_at, now()),
                     last_successful_event_at = now(),
+                    updated_at = now()
+                WHERE id = $1
+                """,
+                creator_row_id,
+            )
+
+    async def mark_setup_verified(self, creator_row_id: int) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE throne_creators
+                SET
+                    tracking_mode = 'webhook',
+                    webhook_connected_at = COALESCE(webhook_connected_at, now()),
+                    last_successful_event_at = now(),
+                    last_test_webhook_at = now(),
+                    setup_verified_at = now(),
                     updated_at = now()
                 WHERE id = $1
                 """,

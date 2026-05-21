@@ -7,8 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_embed
-from rob.ui.cards.registration import registration_embed
+from rob.ui.cards.errors import error_card
+from rob.ui.cards.registration import registration_card
 from rob.utils.money import dollars_to_cents, format_money_from_cents
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ class SendsCog(commands.Cog):
     ) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(
-                embed=error_embed("This command can only be used in a server."),
+                **error_card("This command can only be used in a server.").send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -51,7 +51,7 @@ class SendsCog(commands.Cog):
         domme = await self.bot.dommes_repo.get_by_user_id(interaction.guild.id, interaction.user.id)
         if domme is None:
             await interaction.response.send_message(
-                embed=error_embed("Only registered Dommes can use `/add`."),
+                **error_card("Only registered Dommes can use `/add`.").send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -69,7 +69,7 @@ class SendsCog(commands.Cog):
         )
         if send is None:
             await interaction.followup.send(
-                embed=error_embed("That send could not be recorded."),
+                **error_card("That send could not be recorded.").send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -80,7 +80,7 @@ class SendsCog(commands.Cog):
             else "queued for posting"
         )
         await interaction.followup.send(
-            embed=registration_embed(
+            **registration_card(
                 title="Rob | Send Logged",
                 summary=f"Recorded {format_money_from_cents(send.amount_cents)} and {queue_label}.",
                 details=[
@@ -111,7 +111,7 @@ class SendsCog(commands.Cog):
     ) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(
-                embed=error_embed("This command can only be used in a server."),
+                **error_card("This command can only be used in a server.").send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -119,7 +119,7 @@ class SendsCog(commands.Cog):
         domme_record = await self.bot.dommes_repo.get_by_user_id(interaction.guild.id, domme.id)
         if domme_record is None:
             await interaction.response.send_message(
-                embed=error_embed("That user is not a registered Domme."),
+                **error_card("That user is not a registered Domme.").send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -133,7 +133,7 @@ class SendsCog(commands.Cog):
         )
         if recent_count >= _SEND_REQUEST_RATE_LIMIT:
             await interaction.response.send_message(
-                embed=error_embed(
+                **error_card(
                     "Rate limit reached.",
                     f"You can only request {_SEND_REQUEST_RATE_LIMIT} send reviews from the same Domme in 24 hours.",
                 ),
@@ -154,7 +154,7 @@ class SendsCog(commands.Cog):
 
         try:
             await domme.send(
-                embed=registration_embed(
+                **registration_card(
                     title="Rob | Send Request",
                     summary=f"{interaction.user.display_name} asked you to log a send.",
                     details=[
@@ -163,18 +163,18 @@ class SendsCog(commands.Cog):
                         ("Suggested /add", f"/add amount:{float(amount):.2f} method:{method.value} sub:{interaction.user.display_name}"),
                         ("Note", request_record.note or "No note provided."),
                     ],
-                )
+                ).send_kwargs()
             )
         except discord.HTTPException:
             await self.bot.send_requests_repo.delete(request_record.id)
             await interaction.followup.send(
-                embed=error_embed("Rob couldn't DM that Domme right now."),
+                **error_card("Rob couldn't DM that Domme right now.").send_kwargs(),
                 ephemeral=True,
             )
             return
 
         await interaction.followup.send(
-            embed=registration_embed(
+            **registration_card(
                 title="Rob | Request Sent",
                 summary=f"Your request has been sent to {domme.mention}.",
                 details=[("Method", method.value)],

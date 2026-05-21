@@ -6,8 +6,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.counting import counting_updated_embed
-from rob.ui.cards.errors import error_embed
+from rob.ui.cards.counting import counting_updated_card
+from rob.ui.cards.errors import error_card
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -28,14 +28,14 @@ class CountingCog(commands.Cog):
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
-                embed=error_embed("This command can only be used in a server."),
+                **error_card("This command can only be used in a server.").send_kwargs(),
                 ephemeral=True,
             )
             return
 
         await self.bot.counting_service.set_current_number(interaction.guild.id, int(number))
         await interaction.response.send_message(
-            embed=counting_updated_embed(int(number)),
+            **counting_updated_card(int(number)).send_kwargs(),
             ephemeral=True,
         )
 
