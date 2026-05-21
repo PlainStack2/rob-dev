@@ -16,7 +16,7 @@
 | DM audit | partial admin auditing in legacy | not ported | not ported | Missing |
 | Carl-bot warn handling | integration existed | not present | not present | Missing |
 | manual send methods | broad method list | reduced methods | reduced methods (parity pending) | Partial |
-| UI/cards | legacy style | mixed embeds | centralized cards with registration+leaderboard polish | Partial |
+| UI/cards | legacy style | mixed embeds | true LayoutView/Container/TextDisplay rendering with embed fallback | Complete |
 
 ## Notes
 
@@ -27,4 +27,4 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 - Test/setup webhook payloads are detected before send insertion.
 - Test events update creator setup verification timestamps (`setup_verified_at`, `last_test_webhook_at`, `last_successful_event_at`) and return `{"ok": true, "setup_verified": true}`.
 - Test events do not insert `sends` rows and do not enter the Discord send tracker queue.
-- Runtime currently renders registration/setup UI with embed fallback via a Components V2 compatibility layer until discord.py exposes stable V2 APIs.
+- Runtime now uses true LayoutView-based Components V2 rendering when supported, with automatic embed fallback if required V2 classes are unavailable.

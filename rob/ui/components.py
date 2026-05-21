@@ -6,26 +6,9 @@ from rob.ui.render import CardAction, CardSection, RobCard, RenderedMessage, ren
 from rob.ui.theme import COLOR_INFO
 
 
-def make_card(
-    *,
-    title: str,
-    body: str,
-    color: discord.Colour | None = None,
-    footer: str | None = None,
-    sections: list[CardSection] | None = None,
-    image_url: str | None = None,
-    actions: list[CardAction] | None = None,
-) -> RobCard:
-    return RobCard(
-        title=title,
-        body=body,
-        color=color or COLOR_INFO,
-        footer=footer,
-        sections=sections or [],
-        image_url=image_url,
-        actions=actions or [],
-    )
+def make_card(*, title: str, body: str, color: discord.Colour | None = None, footer: str | None = None, sections: list[CardSection] | None = None, image_url: str | None = None, actions: list[CardAction] | None = None) -> RobCard:
+    return RobCard(title=title, body=body, color=color or COLOR_INFO, footer=footer, sections=sections or [], image_url=image_url, actions=actions or [])
 
 
-def render(card: RobCard, *, view: discord.ui.View | None = None) -> RenderedMessage:
+def render(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None = None) -> RenderedMessage:
     return render_card(card, view=view)

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+from typing import Any, Literal
 
 import discord
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -34,17 +38,63 @@ class RobCard:
 
 @dataclass(frozen=True)
 class RenderedMessage:
-    embed: discord.Embed
-    view: discord.ui.View | None
-    mode: str
+    content: str | None = None
+    embed: discord.Embed | None = None
+    embeds: list[discord.Embed] | None = None
+    view: discord.ui.View | discord.ui.LayoutView | None = None
+    mode: Literal["components_v2", "embed_fallback"] = "embed_fallback"
+
+    def send_kwargs(self) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"content": self.content, "view": self.view}
+        if self.embed is not None:
+            kwargs["embed"] = self.embed
+        if self.embeds is not None:
+            kwargs["embeds"] = self.embeds
+        return kwargs
+
+    def edit_kwargs(self) -> dict[str, Any]:
+        kwargs = self.send_kwargs()
+        if self.mode == "components_v2":
+            kwargs["content"] = None
+            kwargs["embed"] = None
+            kwargs["embeds"] = None
+            kwargs["attachments"] = None
+        return kwargs
 
 
-def _supports_components_v2() -> bool:
-    # TODO: Switch to true Discord Components V2 payload rendering once discord.py exposes stable APIs.
-    return False
+def supports_components_v2() -> bool:
+    required = ["LayoutView", "Container", "Section", "TextDisplay", "Separator", "MediaGallery", "Thumbnail"]
+    ok = all(hasattr(discord.ui, name) for name in required)
+    if not ok:
+        log.info("Discord Components V2 unavailable; using embed fallback renderer.")
+    return ok
 
 
-def render_card(card: RobCard, *, view: discord.ui.View | None = None) -> RenderedMessage:
+def _render_v2(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None) -> RenderedMessage:
+    layout = view if isinstance(view, discord.ui.LayoutView) else discord.ui.LayoutView(timeout=getattr(view, "timeout", 1800) if view else 1800)
+    items: list[Any] = [discord.ui.TextDisplay(f"# {card.title}"), discord.ui.TextDisplay(card.body)]
+    items.append(discord.ui.Separator())
+    for section in card.sections:
+        items.append(discord.ui.TextDisplay(f"**{section.title}**\n{section.text}"))
+    if card.image_url:
+        items.append(discord.ui.Separator())
+        try:
+            items.append(discord.ui.MediaGallery(discord.MediaGalleryItem(media=card.image_url)))
+        except Exception:
+            items.append(discord.ui.TextDisplay(f"[Media]({card.image_url})"))
+    if card.footer:
+        items.append(discord.ui.Separator())
+        items.append(discord.ui.TextDisplay(f"-# {card.footer}"))
+    container = discord.ui.Container(*items, accent_color=card.color)
+    if isinstance(layout, discord.ui.LayoutView):
+        layout.add_item(container)
+        if view and not isinstance(view, discord.ui.LayoutView):
+            for item in view.children:
+                layout.add_item(item)
+    return RenderedMessage(view=layout, mode="components_v2")
+
+
+def _render_embed(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None) -> RenderedMessage:
     embed = discord.Embed(title=card.title, description=card.body, colour=card.color)
     for section in card.sections:
         embed.add_field(name=section.title, value=section.text, inline=section.inline)
@@ -52,6 +102,10 @@ def render_card(card: RobCard, *, view: discord.ui.View | None = None) -> Render
         embed.set_footer(text=card.footer)
     if card.image_url:
         embed.set_image(url=card.image_url)
+    return RenderedMessage(embed=embed, view=view, mode="embed_fallback")
 
-    mode = "components_v2" if _supports_components_v2() else "embed_fallback"
-    return RenderedMessage(embed=embed, view=view, mode=mode)
+
+def render_card(card: RobCard, *, view: discord.ui.View | discord.ui.LayoutView | None = None) -> RenderedMessage:
+    if supports_components_v2():
+        return _render_v2(card, view=view)
+    return _render_embed(card, view=view)

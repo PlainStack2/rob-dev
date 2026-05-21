@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.counting import counting_updated_embed
+from rob.ui.cards.counting import counting_updated_card
 from rob.ui.cards.errors import error_embed
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class CountingCog(commands.Cog):
 
         await self.bot.counting_service.set_current_number(interaction.guild.id, int(number))
         await interaction.response.send_message(
-            embed=counting_updated_embed(int(number)),
+            **counting_updated_card(int(number)).send_kwargs(),
             ephemeral=True,
         )
 
