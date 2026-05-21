@@ -43,3 +43,12 @@ def test_render_card_raises_if_components_v2_missing(monkeypatch: pytest.MonkeyP
     monkeypatch.delattr(discord.ui, "LayoutView", raising=False)
     with pytest.raises(RuntimeError):
         render_card(RobCard(title="X", body="Y"))
+
+
+def test_render_card_rejects_prepopulated_layout_to_enforce_container_first_order():
+    import discord
+
+    view = discord.ui.LayoutView()
+    view.add_item(discord.ui.Button(label="X"))
+    with pytest.raises(RuntimeError):
+        render_card(RobCard(title="T", body="B"), view=view)

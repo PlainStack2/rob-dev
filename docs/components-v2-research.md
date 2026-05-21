@@ -49,3 +49,9 @@ The discord.py docs also explicitly state that when editing a message to use `La
 - Classic embed fallback was removed from the new Rob card renderer.
 - If required V2 classes are missing, rendering raises a RuntimeError with missing class names.
 - Any remaining classic embed helpers outside this card renderer are legacy/non-card paths only.
+
+## LayoutView ordering decision
+- Rob now enforces **container-first ordering** for card messages.
+- `render_card()` renders the card container into an empty `LayoutView` first.
+- Action buttons are added **after** rendering (e.g. registration flow calls `throne_setup_card(...)` then `view.add_item(button)`), which guarantees buttons appear below the card.
+- To prevent accidental wrong ordering, `render_card(view=...)` raises a runtime error if the provided `LayoutView` already has children.

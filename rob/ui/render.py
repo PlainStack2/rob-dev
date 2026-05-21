@@ -70,6 +70,11 @@ def require_components_v2() -> None:
 
 def render_card(card: RobCard, *, view: discord.ui.LayoutView | None = None) -> RenderedMessage:
     require_components_v2()
+    if view is not None and len(view.children) > 0:
+        raise RuntimeError(
+            "render_card(view=...) expects an empty LayoutView so Rob can place the card container before action buttons. "
+            "Add buttons after rendering to preserve container-first ordering."
+        )
     layout = view or discord.ui.LayoutView(timeout=1800)
 
     items: list[Any] = [discord.ui.TextDisplay(f"# {card.title}"), discord.ui.TextDisplay(card.body), discord.ui.Separator()]
