@@ -89,6 +89,17 @@ class ThroneCreatorsRepository:
         assert row is not None
         return _build_throne_creator(row)
 
+
+    async def get(self, creator_row_id: int) -> ThroneCreator | None:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT * FROM throne_creators WHERE id = $1 LIMIT 1",
+                creator_row_id,
+            )
+        if row is None:
+            return None
+        return _build_throne_creator(row)
+
     async def get_by_user_id(
         self,
         guild_id: int,

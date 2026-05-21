@@ -56,14 +56,16 @@ class LeaderboardService:
         subs = await self.leaderboards.get_top_subs(guild_id)
 
         dommes_embed = leaderboard_embed(
-            title="Rob | Domme Leaderboard",
+            title="Dom/me Sends Leaderboard",
             entries=dommes,
             summary=summary,
+            footer="To join the leaderboard and make it into the top 10, run /register domme.",
         )
         subs_embed = leaderboard_embed(
-            title="Rob | Sub Leaderboard",
+            title="Sub Sends Leaderboard",
             entries=subs,
             summary=summary,
+            footer="Sub leaderboard updates from tracked sends.",
         )
 
         await self._upsert_message(
