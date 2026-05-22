@@ -40,3 +40,8 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
   - errors/snag-paperwork tone
 - Copy intentionally changed:
   - copy was centralized into `rob/ui/copy.py` constants/helpers so cogs stop hardcoding long user-facing blocks.
+
+
+## 2026-05 update
+- Added explicit v2 priority calls: inactivity P1, DM audit P2/P3, Carl warn relay P2, local admin endpoints/shell helpers P1/P2.
+- Event runtime remains intentionally not ported unless explicitly requested.
