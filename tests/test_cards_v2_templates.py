@@ -23,6 +23,13 @@ def test_send_card_title_and_flying_dutchman():
     contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
     assert "just got a new send" in contents
     assert "The Flying Dutchman" in contents
+    assert "Rob Send ID" not in contents
+
+
+def test_send_card_unclaimed_sender_copy():
+    msg = send_card(send=_send("gifter_name"), domme_label="@Domme", sub_label="gifter_name", rank=None)
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "gifter_name with no nickname claimed" in contents
 
 
 def test_leaderboard_main_and_stats_titles():
@@ -36,3 +43,4 @@ def test_leaderboard_main_and_stats_titles():
     assert "🥇" in main_contents and "🥈" in main_contents and "🥉" in main_contents and "#4" in main_contents
     assert "🏆 Thy Send Leaderboard | Stats" in stats_contents
     assert "Leaderboard last updated" in stats_contents
+    assert "👑" not in stats_contents and "🦹‍♀️" not in stats_contents and "💸" not in stats_contents

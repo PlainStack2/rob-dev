@@ -29,6 +29,7 @@ from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.registration_service import RegistrationService
 from rob.services.send_queue_service import SendQueueService
+from rob.services.send_request_service import SendRequestService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
 
@@ -94,6 +95,10 @@ class RobBot(commands.Bot):
             subs=self.subs_repo,
             maintenance=self.maintenance_service,
             throne=self.throne_service,
+        )
+        self.send_request_service = SendRequestService(
+            send_requests=self.send_requests_repo,
+            send_service=self.send_service,
         )
         self.send_queue_service = SendQueueService(
             bot=self,

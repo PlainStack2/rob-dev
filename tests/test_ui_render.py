@@ -73,3 +73,15 @@ def test_build_action_row_wraps_buttons():
     row = build_action_row(discord.ui.Button(label="A"), discord.ui.Button(label="B"))
     assert type(row).__name__ == "ActionRow"
     assert len(row.children) == 2
+
+
+def test_card_without_footer_renders_no_footer_line():
+    msg = render_card(RobCard(title="T", body="B", footer=None))
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "-#" not in contents
+
+
+def test_card_with_explicit_footer_renders_footer_line():
+    msg = render_card(RobCard(title="T", body="B", footer="Rob kept the paperwork tidy."))
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "-# Rob kept the paperwork tidy." in contents

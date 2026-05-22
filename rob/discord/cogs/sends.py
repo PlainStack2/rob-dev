@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -14,9 +13,33 @@ from rob.utils.money import dollars_to_cents, format_money_from_cents
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
 
-_MANUAL_METHODS = ["cashapp", "paypal", "wishtender", "throne", "other"]
-_REQUEST_METHODS = ["cashapp", "paypal", "wishtender", "throne", "other"]
-_SEND_REQUEST_RATE_LIMIT = 3
+_MANUAL_METHODS = ["cashapp", "venmo", "paypal", "onlyfans", "loyalfans", "youpay", "other"]
+_REQUEST_METHODS = ["cashapp", "venmo", "paypal", "onlyfans", "loyalfans", "youpay", "other"]
+
+
+class _SendRequestReviewView(discord.ui.LayoutView):
+    def __init__(self, *, bot: "RobBot", request_id: int, guild_id: int, domme_id: int | None) -> None:
+        super().__init__(timeout=86400)
+        self.bot = bot
+        self.request_id = request_id
+        self.guild_id = guild_id
+        self.domme_id = domme_id
+
+    @discord.ui.button(label="Approve & Log", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        out = await self.bot.send_request_service.approve(request_id=self.request_id, guild_id=self.guild_id, domme_id=self.domme_id)
+        await interaction.response.send_message(
+            **registration_card(title="Send request approved", summary="Rob logged the send.", details=[("Status", out.status)]).send_kwargs(),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label="Ignore", style=discord.ButtonStyle.secondary)
+    async def ignore(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        out = await self.bot.send_request_service.ignore(request_id=self.request_id)
+        await interaction.response.send_message(
+            **registration_card(title="Send request ignored", summary="Rob marked the request as ignored.", details=[("Status", out.status)]).send_kwargs(),
+            ephemeral=True,
+        )
 
 
 class SendsCog(commands.Cog):
@@ -124,18 +147,11 @@ class SendsCog(commands.Cog):
             )
             return
 
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-        recent_count = await self.bot.send_requests_repo.count_since(
-            guild_id=interaction.guild.id,
-            sub_user_id=interaction.user.id,
-            domme_user_id=domme.id,
-            since=since,
-        )
-        if recent_count >= _SEND_REQUEST_RATE_LIMIT:
+        if await self.bot.send_request_service.is_rate_limited(guild_id=interaction.guild.id, sub_user_id=interaction.user.id, domme_user_id=domme.id):
             await interaction.response.send_message(
                 **error_card(
                     "Rate limit reached.",
-                    f"You can only request {_SEND_REQUEST_RATE_LIMIT} send reviews from the same Domme in 24 hours.",
+                    "You can only request 3 send reviews from the same Domme in 24 hours.",
                 ),
                 ephemeral=True,
             )
@@ -163,6 +179,7 @@ class SendsCog(commands.Cog):
                         ("Suggested /add", f"/add amount:{float(amount):.2f} method:{method.value} sub:{interaction.user.display_name}"),
                         ("Note", request_record.note or "No note provided."),
                     ],
+                    view=_SendRequestReviewView(bot=self.bot, request_id=request_record.id, guild_id=interaction.guild.id, domme_id=domme_record.id),
                 ).send_kwargs()
             )
         except discord.HTTPException:
