@@ -80,6 +80,10 @@ def test_send_card_renders_thumbnail_image_and_currency_name():
     assert "rank after this send" not in all_text
     assert "<t:" not in all_text
     assert msg.view.children[0].accent_color == COLOR_SEND
+    payload = msg.view.to_components()
+    assert payload[0]["components"][2]["type"] == 9
+    assert payload[0]["components"][2]["accessory"]["type"] == 11
+    assert payload[0]["components"][2]["accessory"]["media"]["url"] == "https://example.com/item.png"
 
 
 def test_send_card_without_image_uses_text_display_and_no_footer():

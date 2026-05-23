@@ -210,7 +210,7 @@ class LeaderboardsRepository:
             row = await connection.fetchrow(
                 """
                 SELECT *
-                FROM leaderboard_messages
+                FROM leaderboard_message
                 WHERE guild_id = $1
                 AND message_key = $2
                 """,
@@ -233,7 +233,7 @@ class LeaderboardsRepository:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                INSERT INTO leaderboard_messages (
+                INSERT INTO leaderboard_message (
                     guild_id,
                     message_key,
                     leaderboard_type,

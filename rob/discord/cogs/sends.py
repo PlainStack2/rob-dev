@@ -10,8 +10,10 @@ from rob.discord.permissions import is_staff_member
 from rob.services.send_display import build_sub_display, format_send_source
 from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.registration import registration_card
+from rob.ui.cards.send_request import send_request_review_card
 from rob.ui.cards.send import send_details_card, send_details_list_card
 from rob.ui.copy import PERMISSION_ROLE_MISSING
+from rob.ui.render import add_card_actions
 from rob.utils.money import dollars_to_cents, format_money_from_cents
 
 if TYPE_CHECKING:
@@ -21,17 +23,15 @@ _MANUAL_METHODS = ["cashapp", "venmo", "paypal", "onlyfans", "loyalfans", "youpa
 _REQUEST_METHODS = ["cashapp", "venmo", "paypal", "onlyfans", "loyalfans", "youpay", "other"]
 
 
-class _SendRequestReviewView(discord.ui.LayoutView):
+class _ApproveSendRequestButton(discord.ui.Button):
     def __init__(self, *, bot: "RobBot", request_id: int, guild_id: int, domme_id: int | None) -> None:
-        super().__init__(timeout=86400)
+        super().__init__(label="Approve & Log", style=discord.ButtonStyle.success)
         self.bot = bot
         self.request_id = request_id
         self.guild_id = guild_id
         self.domme_id = domme_id
 
-    @discord.ui.button(label="Approve & Log", style=discord.ButtonStyle.success)
-    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        del button
+    async def callback(self, interaction: discord.Interaction) -> None:
         out = await self.bot.send_request_service.approve(
             request_id=self.request_id,
             guild_id=self.guild_id,
@@ -46,9 +46,14 @@ class _SendRequestReviewView(discord.ui.LayoutView):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="Ignore", style=discord.ButtonStyle.secondary)
-    async def ignore(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        del button
+
+class _IgnoreSendRequestButton(discord.ui.Button):
+    def __init__(self, *, bot: "RobBot", request_id: int) -> None:
+        super().__init__(label="Ignore", style=discord.ButtonStyle.secondary)
+        self.bot = bot
+        self.request_id = request_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
         out = await self.bot.send_request_service.ignore(request_id=self.request_id)
         await interaction.response.send_message(
             **registration_card(
@@ -58,6 +63,26 @@ class _SendRequestReviewView(discord.ui.LayoutView):
             ).send_kwargs(),
             ephemeral=True,
         )
+
+
+def add_send_request_review_actions(
+    view: discord.ui.LayoutView,
+    *,
+    bot: "RobBot",
+    request_id: int,
+    guild_id: int,
+    domme_id: int | None,
+) -> None:
+    add_card_actions(
+        view,
+        _ApproveSendRequestButton(
+            bot=bot,
+            request_id=request_id,
+            guild_id=guild_id,
+            domme_id=domme_id,
+        ),
+        _IgnoreSendRequestButton(bot=bot, request_id=request_id),
+    )
 
 
 class SendsCog(commands.Cog):
@@ -200,27 +225,16 @@ class SendsCog(commands.Cog):
         )
 
         try:
-            await domme.send(
-                **registration_card(
-                    title="Rob | Send Request",
-                    summary=f"{interaction.user.display_name} asked you to log a send.",
-                    details=[
-                        ("Amount", format_money_from_cents(request_record.amount_cents)),
-                        ("Method", request_record.method),
-                        (
-                            "Suggested /add",
-                            f"/add amount:{float(amount):.2f} method:{method.value} sub:{interaction.user.display_name}",
-                        ),
-                        ("Note", request_record.note or "No note provided."),
-                    ],
-                    view=_SendRequestReviewView(
-                        bot=self.bot,
-                        request_id=request_record.id,
-                        guild_id=interaction.guild.id,
-                        domme_id=domme_record.id,
-                    ),
-                ).send_kwargs()
+            review_msg = send_request_review_card(request_record, interaction.user.display_name)
+            assert review_msg.view is not None
+            add_send_request_review_actions(
+                review_msg.view,
+                bot=self.bot,
+                request_id=request_record.id,
+                guild_id=interaction.guild.id,
+                domme_id=domme_record.id,
             )
+            await domme.send(**review_msg.send_kwargs())
         except discord.HTTPException:
             await self.bot.send_requests_repo.delete(request_record.id)
             await interaction.followup.send(

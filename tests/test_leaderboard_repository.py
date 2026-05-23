@@ -92,3 +92,46 @@ def test_summary_counts_registered_dommes_and_unclaimed_totals():
     assert summary.send_count == 4
     assert summary.unclaimed_send_count == 1
     assert summary.unclaimed_total_cents == 1099
+
+
+def test_message_queries_use_singular_leaderboard_message_table():
+    connection = _FakeConnection(fetchrow_row=None)
+    repo = LeaderboardsRepository(_FakeDatabase(connection))
+
+    asyncio.run(repo.get_message(1, "leaderboard"))
+    query, params = connection.fetchrow_calls[0]
+
+    assert "FROM leaderboard_message" in query
+    assert "leaderboard_messages" not in query
+    assert params == (1, "leaderboard")
+
+
+def test_message_upserts_use_singular_leaderboard_message_table():
+    connection = _FakeConnection(
+        fetchrow_row={
+            "id": 1,
+            "guild_id": 1,
+            "message_key": "leaderboard",
+            "leaderboard_type": "dommes",
+            "channel_id": 123,
+            "message_id": 456,
+            "created_at": None,
+            "updated_at": None,
+        }
+    )
+    repo = LeaderboardsRepository(_FakeDatabase(connection))
+
+    asyncio.run(
+        repo.upsert_message(
+            guild_id=1,
+            message_key="leaderboard",
+            leaderboard_type="dommes",
+            channel_id=123,
+            message_id=456,
+        )
+    )
+    query, params = connection.fetchrow_calls[0]
+
+    assert "INSERT INTO leaderboard_message" in query
+    assert "leaderboard_messages" not in query
+    assert params == (1, "leaderboard", "dommes", 123, 456)

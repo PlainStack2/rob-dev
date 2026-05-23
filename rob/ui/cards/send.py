@@ -25,7 +25,7 @@ def send_card(*, send: SendRecord, domme_label: str, sub_display: str, rank: int
         children.append(
             discord.ui.Section(
                 discord.ui.TextDisplay(body),
-                accessory=discord.ui.Thumbnail(send.item_image_url),
+                accessory=discord.ui.Thumbnail(media=send.item_image_url),
             )
         )
     else:

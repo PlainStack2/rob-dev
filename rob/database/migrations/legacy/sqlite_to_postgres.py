@@ -562,7 +562,7 @@ async def import_leaderboard_messages(
 
         await postgres.execute(
             """
-            INSERT INTO leaderboard_messages (
+            INSERT INTO leaderboard_message (
                 guild_id,
                 message_key,
                 leaderboard_type,
