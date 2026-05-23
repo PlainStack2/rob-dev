@@ -5,7 +5,7 @@ from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.subs import SubsRepository
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.throne_service import ThroneService
-from rob.throne.payloads import ThroneSendPayload
+from rob.throne.payloads import ThroneSendPayload, is_known_test_sender
 from rob.utils.time import utc_now
 
 
@@ -17,11 +17,13 @@ class SendService:
         subs: SubsRepository,
         maintenance: MaintenanceService,
         throne: ThroneService | None = None,
+        throne_test_gifter_usernames: tuple[str, ...] = (),
     ) -> None:
         self.sends = sends
         self.subs = subs
         self.maintenance = maintenance
         self.throne = throne
+        self.throne_test_gifter_usernames = throne_test_gifter_usernames
 
     async def record_throne_send(
         self,
@@ -32,6 +34,10 @@ class SendService:
         amount_cents = payload.amount_cents
         currency = payload.currency or "USD"
         is_private = payload.is_private
+        is_test_send = is_known_test_sender(
+            payload.gifter_username,
+            test_gifter_usernames=set(self.throne_test_gifter_usernames),
+        )
 
         if False and (
             amount_cents == 0
@@ -80,6 +86,7 @@ class SendService:
                 seeded=False,
                 sent_at=payload.purchased_at,
                 discord_post_status=status,
+                is_test_send=is_test_send,
             )
         )
 
@@ -124,5 +131,6 @@ class SendService:
                 seeded=False,
                 sent_at=utc_now(),
                 discord_post_status=status,
+                is_test_send=False,
             )
         )

@@ -37,6 +37,20 @@ def build_parser() -> argparse.ArgumentParser:
     leaderboard_subparsers = leaderboard.add_subparsers(dest="leaderboard_command", required=True)
     leaderboard_subparsers.add_parser("refresh", help="Request a leaderboard refresh from the bot.")
 
+    throne = subparsers.add_parser("throne", help="Throne send operations.")
+    throne_subparsers = throne.add_subparsers(dest="throne_command", required=True)
+    throne_subparsers.add_parser(
+        "invalidate-test-sends",
+        help="Mark known Throne test-user sends so leaderboards can exclude them.",
+    )
+
+    sends = subparsers.add_parser("sends", help="Send record operations.")
+    sends_subparsers = sends.add_subparsers(dest="sends_command", required=True)
+    sends_subparsers.add_parser(
+        "backfill-public-ids",
+        help="Generate and store missing public send IDs.",
+    )
+
     count = subparsers.add_parser("count", help="Counting operations.")
     count_subparsers = count.add_subparsers(dest="count_command", required=True)
     count_status = count_subparsers.add_parser("status", help="Show counting state.")
@@ -50,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 @dataclass(frozen=True)
 class OperationsContext:
+    settings: object
     database: Database
     bot_state: BotStateRepository
     maintenance: MaintenanceService
@@ -65,6 +80,7 @@ async def create_context() -> OperationsContext:
     await database.connect()
     bot_state = BotStateRepository(database)
     return OperationsContext(
+        settings=settings,
         database=database,
         bot_state=bot_state,
         maintenance=MaintenanceService(bot_state),
@@ -113,10 +129,14 @@ async def handle_maintenance(ctx: OperationsContext, args: argparse.Namespace) -
         print("maintenance_mode=on")
         if args.reason:
             print(f"maintenance_reason={args.reason}")
+        print("leaderboard_refresh=requested")
         return
     if args.maintenance_command == "off":
         await ctx.maintenance.disable()
+        released = await ctx.sends.release_queued_maintenance()
         print("maintenance_mode=off")
+        print(f"released={released}")
+        print("leaderboard_refresh=requested")
         return
     raise RuntimeError(f"Unsupported maintenance command: {args.maintenance_command}")
 
@@ -179,6 +199,24 @@ async def handle_count(ctx: OperationsContext, args: argparse.Namespace) -> None
     raise RuntimeError(f"Unsupported count command: {args.count_command}")
 
 
+async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> None:
+    if args.throne_command == "invalidate-test-sends":
+        usernames = list(ctx.settings.throne_test_gifter_usernames)
+        updated = await ctx.sends.mark_known_test_sends(test_gifter_usernames=usernames)
+        print(f"updated={updated}")
+        print(f"usernames={','.join(usernames)}")
+        return
+    raise RuntimeError(f"Unsupported throne command: {args.throne_command}")
+
+
+async def handle_sends(ctx: OperationsContext, args: argparse.Namespace) -> None:
+    if args.sends_command == "backfill-public-ids":
+        updated = await ctx.sends.backfill_public_send_ids()
+        print(f"updated={updated}")
+        return
+    raise RuntimeError(f"Unsupported sends command: {args.sends_command}")
+
+
 async def main_async() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -194,6 +232,10 @@ async def main_async() -> None:
             await handle_leaderboard(ctx, args)
         elif args.command == "count":
             await handle_count(ctx, args)
+        elif args.command == "throne":
+            await handle_throne(ctx, args)
+        elif args.command == "sends":
+            await handle_sends(ctx, args)
         else:
             raise RuntimeError(f"Unsupported command: {args.command}")
     finally:

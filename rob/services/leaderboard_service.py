@@ -4,9 +4,12 @@ import logging
 
 import discord
 
+from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
+from rob.ui.cards.leader_alert import leader_alert_card
 from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
+from rob.services.maintenance_service import MaintenanceService
 
 log = logging.getLogger(__name__)
 
@@ -18,10 +21,22 @@ class LeaderboardService:
         bot: discord.Client,
         guild_settings: GuildSettingsRepository,
         leaderboards: LeaderboardsRepository,
+        bot_state: BotStateRepository,
+        maintenance: MaintenanceService,
+        leaderboard_limit: int = 10,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] = (),
+        owner_test_user_id: int | None = None,
     ) -> None:
         self.bot = bot
         self.guild_settings = guild_settings
         self.leaderboards = leaderboards
+        self.bot_state = bot_state
+        self.maintenance = maintenance
+        self.leaderboard_limit = leaderboard_limit
+        self.include_test_sends = include_test_sends
+        self.test_gifter_usernames = test_gifter_usernames
+        self.owner_test_user_id = owner_test_user_id
 
     async def refresh_all_guilds(self) -> None:
         for guild_id in await self.guild_settings.list_guild_ids():
@@ -51,9 +66,25 @@ class LeaderboardService:
         if not isinstance(channel, discord.TextChannel):
             return False
 
-        summary = await self.leaderboards.get_summary(guild_id)
-        dommes = await self.leaderboards.get_top_dommes(guild_id)
-        dommes_msg = leaderboard_card(title="ignored", entries=dommes, summary=summary)
+        summary = await self.leaderboards.get_summary(
+            guild_id,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        dommes = await self.leaderboards.get_top_dommes(
+            guild_id,
+            limit=self.leaderboard_limit,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        dommes_msg = leaderboard_card(
+            title="ignored",
+            entries=dommes,
+            summary=summary,
+            status=await self.maintenance.get_leaderboard_status(),
+        )
         stats_msg = leaderboard_stats_card(summary, dommes)
 
         await self._upsert_message(
@@ -70,6 +101,60 @@ class LeaderboardService:
             leaderboard_type="leaderboard_stats",
             rendered=stats_msg,
         )
+        return True
+
+    async def get_current_leader(self, guild_id: int):
+        leader = await self.leaderboards.get_current_leader(
+            guild_id,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        if leader is None:
+            return None
+        if leader.total_cents <= 0 and leader.send_count <= 0:
+            return None
+        return leader
+
+    async def maybe_post_leader_alert(self, guild_id: int, *, previous_leader_user_id: int | None) -> bool:
+        if await self.maintenance.is_enabled():
+            return False
+        current_leader = await self.get_current_leader(guild_id)
+        if previous_leader_user_id is None or current_leader is None:
+            return False
+        if current_leader.user_id == previous_leader_user_id:
+            return False
+
+        state_key = f"leader_alert:last_announced:{guild_id}"
+        last_announced = await self.bot_state.get_text(state_key)
+        if last_announced is not None and int(last_announced) == current_leader.user_id:
+            return False
+
+        settings = await self.guild_settings.get(guild_id)
+        if settings is None:
+            return False
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return False
+
+        channel_id = settings.leaderboard_channel_id or settings.send_track_channel_id
+        if channel_id is None:
+            log.warning("No leaderboard or send tracking channel configured for leader alert in guild %s.", guild_id)
+            return False
+
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except (discord.NotFound, discord.HTTPException):
+                log.warning("Leader alert channel %s is unavailable in guild %s.", channel_id, guild_id)
+                return False
+        if not isinstance(channel, discord.TextChannel):
+            return False
+
+        await channel.send(**leader_alert_card(f"<@{current_leader.user_id}>").send_kwargs())
+        await self.bot_state.set_value(state_key, str(current_leader.user_id))
         return True
 
     async def _upsert_message(

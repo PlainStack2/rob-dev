@@ -7,9 +7,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_card
+from rob.discord.permissions import member_has_role
+from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.registration import domme_registered_card, registration_card, throne_setup_card
-from rob.ui.copy import THRONE_SETUP_INTRO, throne_setup_steps
+from rob.ui.copy import (
+    PERMISSION_ROLE_MISSING,
+    PERMISSION_ROLE_NOT_CONFIGURED,
+    THRONE_SETUP_INTRO,
+    throne_setup_steps,
+)
 from rob.ui.render import add_card_actions
 
 if TYPE_CHECKING:
@@ -98,11 +104,38 @@ class RegistrationCog(commands.Cog):
     def __init__(self, bot: RobBot) -> None:
         self.bot = bot
 
+    async def _require_configured_role(
+        self,
+        interaction: discord.Interaction,
+        *,
+        role_id: int | None,
+    ) -> bool:
+        if role_id is None:
+            await interaction.response.send_message(
+                **error_permission(PERMISSION_ROLE_NOT_CONFIGURED).send_kwargs(),
+                ephemeral=True,
+            )
+            return False
+        if not member_has_role(interaction.user, role_id):
+            await interaction.response.send_message(
+                **error_permission(PERMISSION_ROLE_MISSING).send_kwargs(),
+                ephemeral=True,
+            )
+            return False
+        return True
+
     @register_group.command(name="domme", description="Register a Domme Throne profile.")
     @app_commands.describe(throne="Your Throne profile URL or username.")
     async def register_domme(self, interaction: discord.Interaction, throne: str) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
+            return
+
+        settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
+        if not await self._require_configured_role(
+            interaction,
+            role_id=settings.domme_role_id if settings is not None else None,
+        ):
             return
 
         await interaction.response.defer(ephemeral=True)
@@ -116,7 +149,6 @@ class RegistrationCog(commands.Cog):
             await interaction.followup.send(**error_card("Webhook URL setup is unavailable.", "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server.").send_kwargs(), ephemeral=True)
             return
 
-        settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
         try:
             dm_msg = throne_setup_card(THRONE_SETUP_INTRO)
             add_setup_buttons(dm_msg.view, creator_id=result.creator.id, webhook_url=result.webhook_url, send_track_channel_id=settings.send_track_channel_id if settings else None)
@@ -141,6 +173,14 @@ class RegistrationCog(commands.Cog):
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
+
+        settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
+        if not await self._require_configured_role(
+            interaction,
+            role_id=settings.sub_role_id if settings is not None else None,
+        ):
+            return
+
         await interaction.response.defer(ephemeral=True)
         try:
             result = await self.bot.registration_service.register_sub(guild_id=interaction.guild.id, discord_user_id=interaction.user.id, send_name=send_name)

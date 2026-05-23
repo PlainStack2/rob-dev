@@ -29,6 +29,8 @@ Usage:
   robctl queue status
   robctl queue flush
   robctl leaderboard refresh
+  robctl throne invalidate-test-sends
+  robctl sends backfill-public-ids
   robctl count status [--guild-id ID]
   robctl count set NUMBER [--guild-id ID]
 EOF
@@ -86,7 +88,7 @@ case "${cmd}" in
         ;;
     esac
     ;;
-  maintenance|queue|leaderboard|count)
+  maintenance|queue|leaderboard|count|throne|sends)
     run_ops "${cmd}" "$@"
     ;;
   *)

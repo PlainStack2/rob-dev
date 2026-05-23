@@ -6,8 +6,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_card
+from rob.discord.permissions import is_staff_member
+from rob.services.send_display import build_sub_display, format_send_source
+from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.registration import registration_card
+from rob.ui.cards.send import send_details_card, send_details_list_card
+from rob.ui.copy import PERMISSION_ROLE_MISSING
 from rob.utils.money import dollars_to_cents, format_money_from_cents
 
 if TYPE_CHECKING:
@@ -27,24 +31,44 @@ class _SendRequestReviewView(discord.ui.LayoutView):
 
     @discord.ui.button(label="Approve & Log", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        out = await self.bot.send_request_service.approve(request_id=self.request_id, guild_id=self.guild_id, domme_id=self.domme_id)
+        del button
+        out = await self.bot.send_request_service.approve(
+            request_id=self.request_id,
+            guild_id=self.guild_id,
+            domme_id=self.domme_id,
+        )
         await interaction.response.send_message(
-            **registration_card(title="Send request approved", summary="Rob logged the send.", details=[("Status", out.status)]).send_kwargs(),
+            **registration_card(
+                title="Send request approved",
+                summary="Rob logged the send.",
+                details=[("Status", out.status)],
+            ).send_kwargs(),
             ephemeral=True,
         )
 
     @discord.ui.button(label="Ignore", style=discord.ButtonStyle.secondary)
     async def ignore(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        del button
         out = await self.bot.send_request_service.ignore(request_id=self.request_id)
         await interaction.response.send_message(
-            **registration_card(title="Send request ignored", summary="Rob marked the request as ignored.", details=[("Status", out.status)]).send_kwargs(),
+            **registration_card(
+                title="Send request ignored",
+                summary="Rob marked the request as ignored.",
+                details=[("Status", out.status)],
+            ).send_kwargs(),
             ephemeral=True,
         )
 
 
 class SendsCog(commands.Cog):
+    send_group = app_commands.Group(name="send", description="Inspect send details.")
+
     def __init__(self, bot: RobBot) -> None:
         self.bot = bot
+
+    @staticmethod
+    def _is_involved_user(user_id: int, send) -> bool:
+        return user_id in {send.domme_user_id, send.sub_user_id}
 
     @app_commands.command(name="add", description="Log a manual send for the leaderboard.")
     @app_commands.describe(
@@ -71,7 +95,10 @@ class SendsCog(commands.Cog):
             )
             return
 
-        domme = await self.bot.dommes_repo.get_by_user_id(interaction.guild.id, interaction.user.id)
+        domme = await self.bot.dommes_repo.get_by_user_id(
+            interaction.guild.id,
+            interaction.user.id,
+        )
         if domme is None:
             await interaction.response.send_message(
                 **error_card("Only registered Dommes can use `/add`.").send_kwargs(),
@@ -110,7 +137,7 @@ class SendsCog(commands.Cog):
                     ("Method", method.value),
                     ("Sender", send.sub_name or "Unclaimed"),
                 ],
-            ),
+            ).send_kwargs(),
             ephemeral=True,
         )
 
@@ -147,12 +174,16 @@ class SendsCog(commands.Cog):
             )
             return
 
-        if await self.bot.send_request_service.is_rate_limited(guild_id=interaction.guild.id, sub_user_id=interaction.user.id, domme_user_id=domme.id):
+        if await self.bot.send_request_service.is_rate_limited(
+            guild_id=interaction.guild.id,
+            sub_user_id=interaction.user.id,
+            domme_user_id=domme.id,
+        ):
             await interaction.response.send_message(
                 **error_card(
                     "Rate limit reached.",
                     "You can only request 3 send reviews from the same Domme in 24 hours.",
-                ),
+                ).send_kwargs(),
                 ephemeral=True,
             )
             return
@@ -176,10 +207,18 @@ class SendsCog(commands.Cog):
                     details=[
                         ("Amount", format_money_from_cents(request_record.amount_cents)),
                         ("Method", request_record.method),
-                        ("Suggested /add", f"/add amount:{float(amount):.2f} method:{method.value} sub:{interaction.user.display_name}"),
+                        (
+                            "Suggested /add",
+                            f"/add amount:{float(amount):.2f} method:{method.value} sub:{interaction.user.display_name}",
+                        ),
                         ("Note", request_record.note or "No note provided."),
                     ],
-                    view=_SendRequestReviewView(bot=self.bot, request_id=request_record.id, guild_id=interaction.guild.id, domme_id=domme_record.id),
+                    view=_SendRequestReviewView(
+                        bot=self.bot,
+                        request_id=request_record.id,
+                        guild_id=interaction.guild.id,
+                        domme_id=domme_record.id,
+                    ),
                 ).send_kwargs()
             )
         except discord.HTTPException:
@@ -195,6 +234,98 @@ class SendsCog(commands.Cog):
                 title="Rob | Request Sent",
                 summary=f"Your request has been sent to {domme.mention}.",
                 details=[("Method", method.value)],
-            ),
+            ).send_kwargs(),
             ephemeral=True,
+        )
+
+    @send_group.command(name="details", description="Show public send details or recent sends.")
+    @app_commands.describe(
+        user="Optional user to inspect.",
+        send_id="Optional public Rob Send ID such as ROB-000151-8FECFB24.",
+        limit="How many sends to show when listing recent sends.",
+    )
+    async def send_details(
+        self,
+        interaction: discord.Interaction,
+        user: Optional[discord.Member] = None,
+        send_id: Optional[str] = None,
+        limit: app_commands.Range[int, 1, 10] = 5,
+    ) -> None:
+        if interaction.guild is None or interaction.user is None:
+            await interaction.response.send_message(
+                **error_card("This command can only be used in a server.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        if send_id and user is not None:
+            await interaction.response.send_message(
+                **error_card("Choose either `send_id` or `user`, not both.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
+        staff = is_staff_member(interaction.user, settings)
+
+        if send_id:
+            send = await self.bot.sends_repo.get_by_public_id(send_id)
+            if send is None and staff and send_id.strip().isdigit():
+                send = await self.bot.sends_repo.get_by_id(int(send_id.strip()))
+            if send is None:
+                await interaction.response.send_message(
+                    **error_card("Rob could not find that send ID.").send_kwargs(),
+                    ephemeral=True,
+                )
+                return
+            send = await self.bot.sends_repo.ensure_public_send_id(send)
+            if not staff and not self._is_involved_user(interaction.user.id, send):
+                await interaction.response.send_message(
+                    **error_permission(PERMISSION_ROLE_MISSING).send_kwargs(),
+                    ephemeral=True,
+                )
+                return
+
+            rendered = send_details_card(
+                send=send,
+                domme_label=f"<@{send.domme_user_id}>",
+                sub_display=build_sub_display(
+                    send,
+                    test_gifter_usernames=self.bot.settings.throne_test_gifter_usernames,
+                ),
+                source_label=format_send_source(send),
+                include_internal=staff,
+            )
+            await interaction.response.send_message(
+                **rendered.send_kwargs(),
+                ephemeral=staff or send.is_private,
+            )
+            return
+
+        target_user = user or interaction.user
+        if target_user.id != interaction.user.id and not staff:
+            await interaction.response.send_message(
+                **error_permission(PERMISSION_ROLE_MISSING).send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        sends = await self.bot.sends_repo.list_sends_for_user(
+            interaction.guild.id,
+            target_user.id,
+            limit=int(limit),
+        )
+        if not staff and target_user.id != interaction.user.id:
+            sends = [send for send in sends if not send.is_private]
+
+        domme_lookup = {send.domme_user_id: f"<@{send.domme_user_id}>" for send in sends}
+        rendered = send_details_list_card(
+            title_label=target_user.mention,
+            sends=sends,
+            domme_lookup=domme_lookup,
+        )
+        await interaction.response.send_message(
+            **rendered.send_kwargs(),
+            ephemeral=(staff and target_user.id != interaction.user.id)
+            or any(send.is_private for send in sends),
         )

@@ -11,6 +11,12 @@ OFFLINE_FOOTER = "Powered by vibes and consequences."
 LEADERBOARD_FOOTER = "Powered by vibes and PostgreSQL."
 STATUS_FOOTER = "Professional enough to deploy, opinionated enough to be Rob."
 COUNTING_FOOTER = "Rob handled the maths. Somehow."
+PERMISSION_ROLE_NOT_CONFIGURED = (
+    "Rob checked the little permission clipboard, but this server has not configured the required role yet."
+)
+PERMISSION_ROLE_MISSING = (
+    "Rob checked the little permission clipboard and your name was not on it."
+)
 
 DOMME_REGISTERED_TITLE = "You're registered!"
 DOMME_REGISTERED_BODY = (

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.models import MaintenanceState
+from rob.services.leaderboard_status import LeaderboardStatus
 from rob.utils.time import utc_now
 
 
@@ -28,6 +29,11 @@ class MaintenanceService:
     async def is_enabled(self) -> bool:
         return await self.bot_state.get_bool(MAINTENANCE_MODE_KEY, default=False)
 
+    async def get_leaderboard_status(self) -> LeaderboardStatus:
+        if await self.is_enabled():
+            return LeaderboardStatus.MAINTENANCE
+        return LeaderboardStatus.LIVE
+
     async def enable(self, *, reason: str | None) -> None:
         await self.bot_state.set_values(
             {
@@ -35,6 +41,7 @@ class MaintenanceService:
                 MAINTENANCE_REASON_KEY: reason or "",
             }
         )
+        await self.request_leaderboard_refresh()
 
     async def disable(self) -> None:
         await self.bot_state.set_values(
@@ -43,6 +50,7 @@ class MaintenanceService:
                 MAINTENANCE_REASON_KEY: "",
             }
         )
+        await self.request_leaderboard_refresh()
 
     async def request_leaderboard_refresh(self) -> None:
         marker = utc_now().isoformat()

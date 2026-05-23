@@ -76,6 +76,12 @@ class RobBot(commands.Bot):
             bot=self,
             guild_settings=self.guild_settings_repo,
             leaderboards=self.leaderboards_repo,
+            bot_state=self.bot_state_repo,
+            maintenance=self.maintenance_service,
+            leaderboard_limit=self.settings.leaderboard_limit,
+            include_test_sends=self.settings.throne_parse_test_sends_as_real_sends,
+            test_gifter_usernames=self.settings.throne_test_gifter_usernames,
+            owner_test_user_id=self.settings.throne_test_send_leaderboard_owner_user_id,
         )
         self.counting_service = CountingService(
             counting=self.counting_repo,
@@ -95,6 +101,7 @@ class RobBot(commands.Bot):
             subs=self.subs_repo,
             maintenance=self.maintenance_service,
             throne=self.throne_service,
+            throne_test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
         self.send_request_service = SendRequestService(
             send_requests=self.send_requests_repo,
@@ -106,6 +113,7 @@ class RobBot(commands.Bot):
             guild_settings=self.guild_settings_repo,
             maintenance=self.maintenance_service,
             leaderboard_service=self.leaderboard_service,
+            test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
 
         await self.add_cog(RegistrationCog(self))
