@@ -92,9 +92,11 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     parsed = parse_throne_send_payload(creator_id=creator_id, payload=payload)
     explicit_test = is_explicit_test_webhook_payload(payload, parsed)
     known_test_sender = is_known_test_sender(parsed.gifter_username, test_gifter_usernames=set(settings.throne_test_gifter_usernames))
-    if explicit_test or (known_test_sender and not settings.throne_parse_test_sends_as_real_sends):
+    if explicit_test:
         await creators.mark_setup_verified(matched_creator.id)
         return web.json_response({"ok": True, "setup_verified": True})
+    if known_test_sender and not settings.throne_parse_test_sends_as_real_sends:
+        await creators.mark_setup_verified(matched_creator.id)
     if known_test_sender and settings.throne_parse_test_sends_as_real_sends:
         log.warning("Known Throne test sender accepted as real send due to THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS=true. creator_id=%s gifter_username=%s", creator_id, parsed.gifter_username)
 
@@ -114,6 +116,7 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         subs=request.app["subs_repository"],
         maintenance=maintenance,
         throne=throne,
+        throne_test_gifter_usernames=settings.throne_test_gifter_usernames,
     )
     send = await send_service.record_throne_send(
         creator=matched_creator,
@@ -124,7 +127,10 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     if send is None:
         return web.json_response({"ok": True, "duplicate": True})
 
-    return web.json_response({"ok": True, "inserted": True, "send_id": send.id})
+    response: dict[str, Any] = {"ok": True, "inserted": True, "send_id": send.id}
+    if known_test_sender and not settings.throne_parse_test_sends_as_real_sends:
+        response["setup_verified"] = True
+    return web.json_response(response)
 
 
 def create_webhook_app(

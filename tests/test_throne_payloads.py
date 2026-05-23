@@ -6,6 +6,7 @@ from rob.throne.payloads import is_explicit_test_webhook_payload, is_known_test_
 def test_gift_purchased_price_parses_to_amount_cents():
     parsed = parse_throne_send_payload(creator_id='c', payload={'type':'gift_purchased','data':{'price':1099,'currency':'USD','item_name':'x','item_thumbnail_url':'https://x','gifter_username':'sub'}})
     assert parsed.amount_cents == 1099
+    assert parsed.item_image_url == 'https://x'
 
 
 def test_contribution_amount_minor_units():
@@ -27,6 +28,10 @@ def test_explicit_test_payload_is_detected():
 
 def test_known_test_sender_detection():
     assert is_known_test_sender('marie_123', test_gifter_usernames={'marie_123'}) is True
+
+
+def test_known_test_sender_detection_is_case_insensitive():
+    assert is_known_test_sender('Marie_123', test_gifter_usernames={'marie_123'}) is True
 
 
 def test_real_sender_not_known_test_sender():

@@ -34,6 +34,8 @@ def test_load_webhook_settings_does_not_require_discord_token(monkeypatch):
 
     assert settings.database_url == "postgresql://example/db"
     assert settings.throne_webhook_require_signature is True
+    assert settings.throne_test_gifter_usernames == ("marie_123",)
+    assert settings.leaderboard_limit == 10
 
 
 
@@ -47,3 +49,16 @@ def test_load_webhook_url_sanitizes_when_generating_registration_url(monkeypatch
     monkeypatch.setenv("THRONE_WEBHOOK_BASE_URL", "==https://rob-dev.barecoding.com/")
     settings = load_webhook_settings()
     assert sanitize_webhook_base_url(settings.throne_webhook_base_url) == "https://rob-dev.barecoding.com"
+
+
+def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("THRONE_TEST_GIFTER_USERNAMES", "marie_123, test_sender ")
+    monkeypatch.setenv("THRONE_TEST_SEND_LEADERBOARD_OWNER_USER_ID", "42")
+    monkeypatch.setenv("LEADERBOARD_LIMIT", "15")
+
+    settings = load_base_settings()
+
+    assert settings.throne_test_gifter_usernames == ("marie_123", "test_sender")
+    assert settings.throne_test_send_leaderboard_owner_user_id == 42
+    assert settings.leaderboard_limit == 15

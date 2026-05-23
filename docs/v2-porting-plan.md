@@ -47,7 +47,7 @@ This document maps the legacy ROB feature inventory (`ROB_FEATURE_REPORT.md`) to
 ### 6) Leaderboards (2-message design)
 - **Status:** Partial.
 - **Priority:** P0.
-- **Needs:** exactly main board + stats panel, no separate sub leaderboard message.
+- **Needs:** exactly main board + stats panel, no separate sub leaderboard message, plus future explicit offline source if desired.
 
 ### 7) Send requests
 - **Status:** Partial.
@@ -126,7 +126,7 @@ This document maps the legacy ROB feature inventory (`ROB_FEATURE_REPORT.md`) to
 | Shell helpers | extensive ops commands | Partial | P1 | robctl-expansion | command matrix parity |
 | Event runtime | event windows/reports | Intentionally removed | Do not port | n/a | only if explicitly requested |
 
-- 2026-05-22: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()` and purple accent constants from `rob/ui/theme.py`; rank lines/footer removed.
-- 2026-05-22: Added NEW LEADER ALERT card (purple accent, separator-based sections) for leaderboard #1 changes (posting logic TODO/dedupe wired in queue path).
-- 2026-05-22: Leaderboard and stats cards now use explicit separator components; stats include Unclaimed Sends section.
-- 2026-05-22: `/send details` command + public Rob Send ID flow remains TODO for follow-up implementation; public send cards intentionally omit Rob Send ID.
+- 2026-05-23: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()`, thumbnails, and purple accent constants from `rob/ui/theme.py`; public send IDs remain intentionally absent from the announcement card.
+- 2026-05-23: Added NEW LEADER ALERT runtime posting with bot-state dedupe and maintenance/test-send safeguards.
+- 2026-05-23: Leaderboard and stats cards now use explicit separator components, registered-Domme aggregation, and dynamic live/maintenance status on the main board.
+- 2026-05-23: `/send details` now uses stored PostgreSQL-backed public send IDs, with a `robctl sends backfill-public-ids` path for older rows.

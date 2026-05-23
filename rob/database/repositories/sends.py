@@ -5,6 +5,7 @@ from asyncpg.exceptions import UniqueViolationError
 
 from rob.database.connection import Database
 from rob.database.repositories.models import NewSend, QueueStatus, SendRecord
+from rob.utils.send_ids import build_public_send_id, parse_public_send_id
 
 
 def _build_send(row: Record) -> SendRecord:
@@ -34,6 +35,8 @@ def _build_send(row: Record) -> SendRecord:
         discord_message_id=row["discord_message_id"],
         discord_post_error=row["discord_post_error"],
         created_at=row["created_at"],
+        is_test_send=bool(row["is_test_send"]) if "is_test_send" in row else False,
+        _public_send_id=row["public_send_id"] if "public_send_id" in row else None,
     )
 
 
@@ -45,7 +48,7 @@ class SendsRepository:
 
     async def insert(self, send: NewSend) -> SendRecord | None:
         try:
-            async with self.database.acquire() as connection:
+            async with self.database.transaction() as connection:
                 row = await connection.fetchrow(
                     """
                     INSERT INTO sends (
@@ -67,13 +70,14 @@ class SendsRepository:
                         is_private,
                         seeded,
                         sent_at,
-                        discord_post_status
+                        discord_post_status,
+                        is_test_send
                     )
                     VALUES (
                         $1, $2, $3, $4, $5,
                         $6, $7, $8, $9, $10,
                         $11, $12, $13, $14, $15,
-                        $16, $17, $18, $19
+                        $16, $17, $18, $19, $20
                     )
                     RETURNING *
                     """,
@@ -96,12 +100,15 @@ class SendsRepository:
                     send.seeded,
                     send.sent_at,
                     send.discord_post_status,
+                    send.is_test_send,
+                )
+                assert row is not None
+                return await self._ensure_public_send_id_on_connection(
+                    connection,
+                    _build_send(row),
                 )
         except UniqueViolationError:
             return None
-
-        assert row is not None
-        return _build_send(row)
 
     async def get(self, send_id: int) -> SendRecord | None:
         async with self.database.acquire() as connection:
@@ -109,6 +116,101 @@ class SendsRepository:
         if row is None:
             return None
         return _build_send(row)
+
+    async def get_by_id(self, send_id: int) -> SendRecord | None:
+        return await self.get(send_id)
+
+    async def get_by_public_id(self, public_id: str) -> SendRecord | None:
+        normalized = public_id.strip().upper()
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT * FROM sends WHERE public_send_id = $1",
+                normalized,
+            )
+        if row is not None:
+            return _build_send(row)
+
+        parsed = parse_public_send_id(public_id)
+        if parsed is None:
+            return None
+        send = await self.get(parsed[0])
+        if send is None:
+            return None
+        if send.public_send_id != normalized:
+            return None
+        return await self.ensure_public_send_id(send)
+
+    async def list_sends_for_user(
+        self,
+        guild_id: int,
+        user_id: int,
+        *,
+        limit: int = 5,
+    ) -> list[SendRecord]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM sends
+                WHERE guild_id = $1
+                AND discord_post_status = 'posted'
+                AND (domme_user_id = $2 OR sub_user_id = $2)
+                ORDER BY sent_at DESC, id DESC
+                LIMIT $3
+                """,
+                guild_id,
+                user_id,
+                limit,
+            )
+        return [_build_send(row) for row in rows]
+
+    async def list_sends_for_domme(
+        self,
+        guild_id: int,
+        domme_user_id: int,
+        *,
+        limit: int = 5,
+    ) -> list[SendRecord]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM sends
+                WHERE guild_id = $1
+                AND discord_post_status = 'posted'
+                AND domme_user_id = $2
+                ORDER BY sent_at DESC, id DESC
+                LIMIT $3
+                """,
+                guild_id,
+                domme_user_id,
+                limit,
+            )
+        return [_build_send(row) for row in rows]
+
+    async def list_sends_for_sub(
+        self,
+        guild_id: int,
+        sub_user_id: int,
+        *,
+        limit: int = 5,
+    ) -> list[SendRecord]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM sends
+                WHERE guild_id = $1
+                AND discord_post_status = 'posted'
+                AND sub_user_id = $2
+                ORDER BY sent_at DESC, id DESC
+                LIMIT $3
+                """,
+                guild_id,
+                sub_user_id,
+                limit,
+            )
+        return [_build_send(row) for row in rows]
 
     async def fetch_for_status(self, status: str, *, limit: int = 50) -> list[SendRecord]:
         async with self.database.acquire() as connection:
@@ -185,3 +287,79 @@ class SendsRepository:
             failed=counts["failed"],
             ignored=counts["ignored"],
         )
+
+    async def ensure_public_send_id(self, send: SendRecord) -> SendRecord:
+        if send.stored_public_send_id:
+            return send
+        async with self.database.transaction() as connection:
+            return await self._ensure_public_send_id_on_connection(connection, send)
+
+    async def backfill_public_send_ids(self, *, limit: int | None = None) -> int:
+        async with self.database.transaction() as connection:
+            if limit is None:
+                rows = await connection.fetch(
+                    """
+                    SELECT *
+                    FROM sends
+                    WHERE public_send_id IS NULL
+                    ORDER BY id ASC
+                    """
+                )
+            else:
+                rows = await connection.fetch(
+                    """
+                    SELECT *
+                    FROM sends
+                    WHERE public_send_id IS NULL
+                    ORDER BY id ASC
+                    LIMIT $1
+                    """,
+                    limit,
+                )
+
+            count = 0
+            for row in rows:
+                await self._ensure_public_send_id_on_connection(connection, _build_send(row))
+                count += 1
+        return count
+
+    async def mark_known_test_sends(self, *, test_gifter_usernames: list[str]) -> int:
+        if not test_gifter_usernames:
+            return 0
+        async with self.database.acquire() as connection:
+            result = await connection.execute(
+                """
+                UPDATE sends
+                SET is_test_send = true
+                WHERE lower(COALESCE(sub_name, '')) = ANY($1::text[])
+                """,
+                test_gifter_usernames,
+            )
+        return int(result.rsplit(" ", 1)[-1])
+
+    async def _ensure_public_send_id_on_connection(
+        self,
+        connection,
+        send: SendRecord,
+    ) -> SendRecord:
+        if send.stored_public_send_id:
+            return send
+
+        public_send_id = build_public_send_id(send)
+        row = await connection.fetchrow(
+            """
+            UPDATE sends
+            SET public_send_id = $2
+            WHERE id = $1
+            AND public_send_id IS NULL
+            RETURNING *
+            """,
+            send.id,
+            public_send_id,
+        )
+        if row is not None:
+            return _build_send(row)
+
+        current = await connection.fetchrow("SELECT * FROM sends WHERE id = $1", send.id)
+        assert current is not None
+        return _build_send(current)

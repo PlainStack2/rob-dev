@@ -5,6 +5,7 @@ import time
 import discord
 
 from rob.database.repositories.models import LeaderboardEntry, LeaderboardSummary
+from rob.services.leaderboard_status import LeaderboardStatus, render_leaderboard_status
 from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_LEADERBOARD
 from rob.utils.money import format_money_from_cents
@@ -20,8 +21,15 @@ def _line(i: int, label: str) -> str:
     return ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"#{i}"
 
 
-def leaderboard_card(*, title: str, entries: list[LeaderboardEntry], summary: LeaderboardSummary, footer: str | None = None, status: str = "🟢 Live") -> RenderedMessage:
-    del title, summary, footer
+def leaderboard_card(
+    *,
+    title: str,
+    entries: list[LeaderboardEntry],
+    summary: LeaderboardSummary,
+    footer: str | None = None,
+    status: LeaderboardStatus | str = LeaderboardStatus.LIVE,
+) -> RenderedMessage:
+    del title, summary
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
 
@@ -42,17 +50,24 @@ def leaderboard_card(*, title: str, entries: list[LeaderboardEntry], summary: Le
     children = [
         discord.ui.TextDisplay("## 🏆 Thy Send Leaderboard"),
         discord.ui.Separator(),
-        discord.ui.TextDisplay(f"-# {status}"),
+        discord.ui.TextDisplay(f"-# {render_leaderboard_status(status)}"),
         discord.ui.Separator(),
         discord.ui.TextDisplay(entries_text),
         discord.ui.Separator(),
         discord.ui.TextDisplay(_HELPER_TEXT),
     ]
+    if footer:
+        children.extend([discord.ui.Separator(), discord.ui.TextDisplay(f"-# {footer}")])
     view.add_item(discord.ui.Container(*children, accent_color=COLOR_LEADERBOARD))
     return RenderedMessage(view=view)
 
 
-def leaderboard_stats_card(summary: LeaderboardSummary, entries: list[LeaderboardEntry]) -> RenderedMessage:
+def leaderboard_stats_card(
+    summary: LeaderboardSummary,
+    entries: list[LeaderboardEntry],
+    *,
+    footer: str | None = None,
+) -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
     now = int(time.time())
@@ -70,5 +85,7 @@ def leaderboard_stats_card(summary: LeaderboardSummary, entries: list[Leaderboar
         discord.ui.Separator(),
         discord.ui.TextDisplay(stats_text),
     ]
+    if footer:
+        children.extend([discord.ui.Separator(), discord.ui.TextDisplay(f"-# {footer}")])
     view.add_item(discord.ui.Container(*children, accent_color=COLOR_LEADERBOARD))
     return RenderedMessage(view=view)

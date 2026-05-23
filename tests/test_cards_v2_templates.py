@@ -1,17 +1,51 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from rob.database.repositories.models import LeaderboardEntry, LeaderboardSummary, SendRecord
-from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
+from rob.services.leaderboard_status import LeaderboardStatus
 from rob.ui.cards.leader_alert import leader_alert_card
-from rob.ui.cards.send import send_card
-from rob.ui.theme import COLOR_LEADER_ALERT, COLOR_SEND
+from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
+from rob.ui.cards.send import send_card, send_details_card
 from rob.ui.copy import throne_setup_steps
+from rob.ui.theme import COLOR_LEADER_ALERT, COLOR_SEND
 
 
-def _send(sub_name: str | None = None) -> SendRecord:
-    return SendRecord(1,1,None,10,None,None,sub_name,1099,"USD",None,"throne","Flowers",None,None,None,None,False,False,datetime.now(UTC),datetime.now(UTC),"pending",None,None,None,datetime.now(UTC))
+def _send(
+    sub_name: str | None = None,
+    *,
+    item_image_url: str | None = None,
+    is_test_send: bool = False,
+) -> SendRecord:
+    now = datetime.now(timezone.utc)
+    return SendRecord(
+        1,
+        1,
+        None,
+        10,
+        None,
+        None,
+        sub_name,
+        1099,
+        "USD",
+        None,
+        "throne_webhook",
+        "Flowers",
+        item_image_url,
+        None,
+        None,
+        None,
+        False,
+        False,
+        now,
+        now,
+        "posted",
+        None,
+        None,
+        None,
+        now,
+        is_test_send,
+    )
 
 
 def test_setup_step_2_contains_almighty_link():
@@ -20,33 +54,78 @@ def test_setup_step_2_contains_almighty_link():
     assert "https://example.com/hook" in text
 
 
-def test_send_card_title_and_flying_dutchman():
-    msg = send_card(send=_send(None), domme_label="@Domme", sub_label=None, rank=2)
-    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
-    assert "New Send to @Domme" in contents
-    assert "The Flying Dutchman" in contents
-    assert "Rob Send ID" not in contents
-    assert "rank after this send" not in contents
+def test_send_card_renders_thumbnail_image_and_currency_name():
+    msg = send_card(
+        send=_send("marie_123", item_image_url="https://example.com/item.png", is_test_send=True),
+        domme_label="@Domme",
+        sub_display="Throne's Test User",
+    )
+    container = msg.view.children[0]
+    section = container.children[2]
+    all_text = "\n".join(
+        str(getattr(child, "content", ""))
+        for child in [container.children[0], section.children[0]]
+    )
+
+    assert [type(child).__name__ for child in container.children] == [
+        "TextDisplay",
+        "Separator",
+        "Section",
+    ]
+    assert type(section.accessory).__name__ == "Thumbnail"
+    assert "New Send to @Domme" in all_text
+    assert "Throne's Test User" in all_text
+    assert "$10.99 (United States Dollar)" in all_text
+    assert "Rob Send ID" not in all_text
+    assert "rank after this send" not in all_text
+    assert "<t:" not in all_text
     assert msg.view.children[0].accent_color == COLOR_SEND
+    payload = msg.view.to_components()
+    assert payload[0]["components"][2]["type"] == 9
+    assert payload[0]["components"][2]["accessory"]["type"] == 11
+    assert payload[0]["components"][2]["accessory"]["media"]["url"] == "https://example.com/item.png"
 
 
-def test_send_card_unclaimed_sender_copy():
-    msg = send_card(send=_send("gifter_name"), domme_label="@Domme", sub_label="gifter_name", rank=None)
-    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+def test_send_card_without_image_uses_text_display_and_no_footer():
+    msg = send_card(send=_send("gifter_name"), domme_label="@Domme", sub_display="gifter_name with no nickname claimed")
+    container = msg.view.children[0]
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in container.children)
+    assert [type(child).__name__ for child in container.children] == [
+        "TextDisplay",
+        "Separator",
+        "TextDisplay",
+    ]
     assert "gifter_name with no nickname claimed" in contents
+    assert "-#" not in contents
 
 
-def test_send_card_no_footer_text():
-    msg = send_card(send=_send("gifter"), domme_label="@Domme", sub_label="gifter", rank=None)
-    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
-    assert "Please enjoy this send equally" not in contents
+def test_send_details_card_shows_public_id_and_internal_fields_when_requested():
+    msg = send_details_card(
+        send=_send("gifter_name"),
+        domme_label="@Domme",
+        sub_display="gifter_name with no nickname claimed",
+        source_label="Throne Webhook",
+        include_internal=True,
+    )
+    container = msg.view.children[0]
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in container.children)
+
+    assert "## Send Details" in contents
+    assert "**Rob Send ID:** ROB-" in contents
+    assert "Database ID:" in contents
+    assert "Event ID:" in contents
 
 
 def test_leaderboard_main_and_stats_titles_and_separators():
-    entries=[LeaderboardEntry("@A",1,12345,7), LeaderboardEntry("@B",2,9000,3), LeaderboardEntry("@C",3,5000,2), LeaderboardEntry("@D",4,2500,1)]
-    summary=LeaderboardSummary(29845,13,4,2,1,1099)
-    main=leaderboard_card(title="ignored",entries=entries,summary=summary)
-    stats=leaderboard_stats_card(summary, entries)
+    entries = [
+        LeaderboardEntry("@A", 1, 12345, 7),
+        LeaderboardEntry("@B", 2, 9000, 3),
+        LeaderboardEntry("@C", 3, 5000, 2),
+        LeaderboardEntry("@D", 4, 0, 0),
+    ]
+    summary = LeaderboardSummary(26345, 12, 4, 2, 1, 1099)
+    main = leaderboard_card(title="ignored", entries=entries, summary=summary)
+    stats = leaderboard_stats_card(summary, entries)
     main_children = main.view.children[0].children
     stats_children = stats.view.children[0].children
     main_contents = "\n".join(str(getattr(ch, "content", "")) for ch in main_children)
@@ -63,12 +142,42 @@ def test_leaderboard_main_and_stats_titles_and_separators():
     ]
     assert "🏆 Thy Send Leaderboard" in main_contents
     assert "🥇" in main_contents and "🥈" in main_contents and "🥉" in main_contents and "#4" in main_contents
+    assert "-# 🟢 Live" in main_contents
 
     assert [type(child).__name__ for child in stats_children] == ["TextDisplay", "Separator", "TextDisplay"]
     assert "🏆 Thy Send Leaderboard | Stats" in stats_contents
     assert "Leaderboard last updated" in stats_contents
     assert "Unclaimed Sends" in stats_contents
     assert "👑" not in stats_contents and "🦹‍♀️" not in stats_contents and "💸" not in stats_contents
+    assert "-# " in stats_contents
+
+
+def test_leaderboard_offline_status_renders_when_explicit():
+    summary = LeaderboardSummary(0, 0, 0, 0, 0, 0)
+    msg = leaderboard_card(
+        title="ignored",
+        entries=[],
+        summary=summary,
+        status=LeaderboardStatus.OFFLINE,
+    )
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "-# 🔴 Offline" in contents
+
+
+def test_leaderboard_stats_footer_is_only_rendered_when_explicit():
+    summary = LeaderboardSummary(0, 0, 1, 0, 0, 0)
+    msg = leaderboard_stats_card(summary, [], footer="Explicit footer only")
+    children = msg.view.children[0].children
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in children)
+
+    assert [type(child).__name__ for child in children] == [
+        "TextDisplay",
+        "Separator",
+        "TextDisplay",
+        "Separator",
+        "TextDisplay",
+    ]
+    assert "-# Explicit footer only" in contents
 
 
 def test_leaderboard_empty_state_uses_same_separator_structure():
@@ -90,7 +199,13 @@ def test_leaderboard_empty_state_uses_same_separator_structure():
 def test_leader_alert_card_shape_and_color():
     msg = leader_alert_card("<@123>")
     children = msg.view.children[0].children
-    assert [type(child).__name__ for child in children] == ["TextDisplay", "Separator", "TextDisplay", "Separator", "TextDisplay"]
     all_text = "\n".join(str(getattr(ch, "content", "")) for ch in children)
+    assert [type(child).__name__ for child in children] == [
+        "TextDisplay",
+        "Separator",
+        "TextDisplay",
+        "Separator",
+        "TextDisplay",
+    ]
     assert "👑 NEW LEADER ALERT!" in all_text
     assert msg.view.children[0].accent_color == COLOR_LEADER_ALERT

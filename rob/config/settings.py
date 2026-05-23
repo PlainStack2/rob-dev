@@ -13,13 +13,15 @@ class BaseSettings:
     app_env: str
     log_level: str
     database_url: str
+    throne_parse_test_sends_as_real_sends: bool
+    throne_test_gifter_usernames: tuple[str, ...]
+    throne_test_send_leaderboard_owner_user_id: int | None
+    leaderboard_limit: int
 
 
 @dataclass(frozen=True)
 class WebhookSettings(BaseSettings):
     throne_webhook_host: str
-    throne_parse_test_sends_as_real_sends: bool
-    throne_test_gifter_usernames: tuple[str, ...]
     throne_webhook_port: int
     throne_webhook_base_url: str
     throne_webhook_require_signature: bool
@@ -81,12 +83,40 @@ def _env_bool(name: str, default: bool) -> bool:
     raise RuntimeError(f"Environment variable {name} must be a boolean value.")
 
 
+def _env_optional_int(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Environment variable {name} must be an integer.") from exc
+
+
+def _env_lower_csv(name: str, default: str) -> tuple[str, ...]:
+    raw = _env_str(name, default)
+    return tuple(value.strip().lower() for value in raw.split(",") if value.strip())
+
+
 def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
     _load_env_file(env_file)
     return BaseSettings(
         app_env=_env_str("APP_ENV", "dev"),
         log_level=_env_str("LOG_LEVEL", "INFO"),
         database_url=_env_str("DATABASE_URL", required=True),
+        throne_parse_test_sends_as_real_sends=_env_bool(
+            "THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS",
+            False,
+        ),
+        throne_test_gifter_usernames=_env_lower_csv(
+            "THRONE_TEST_GIFTER_USERNAMES",
+            "marie_123",
+        ),
+        throne_test_send_leaderboard_owner_user_id=_env_optional_int(
+            "THRONE_TEST_SEND_LEADERBOARD_OWNER_USER_ID"
+        ),
+        leaderboard_limit=_env_int("LEADERBOARD_LIMIT", 10, minimum=1),
     )
 
 
@@ -96,9 +126,11 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         app_env=base.app_env,
         log_level=base.log_level,
         database_url=base.database_url,
+        throne_parse_test_sends_as_real_sends=base.throne_parse_test_sends_as_real_sends,
+        throne_test_gifter_usernames=base.throne_test_gifter_usernames,
+        throne_test_send_leaderboard_owner_user_id=base.throne_test_send_leaderboard_owner_user_id,
+        leaderboard_limit=base.leaderboard_limit,
         throne_webhook_host=_env_str("THRONE_WEBHOOK_HOST", "127.0.0.1"),
-        throne_parse_test_sends_as_real_sends=_env_bool("THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS", False),
-        throne_test_gifter_usernames=tuple(u.strip().lower() for u in _env_str("THRONE_TEST_GIFTER_USERNAMES", "marie_123").split(",") if u.strip()),
         throne_webhook_port=_env_int("THRONE_WEBHOOK_PORT", 8080, minimum=1),
         throne_webhook_base_url=_env_str(
             "THRONE_WEBHOOK_BASE_URL",
@@ -139,6 +171,10 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         app_env=base.app_env,
         log_level=base.log_level,
         database_url=base.database_url,
+        throne_parse_test_sends_as_real_sends=base.throne_parse_test_sends_as_real_sends,
+        throne_test_gifter_usernames=base.throne_test_gifter_usernames,
+        throne_test_send_leaderboard_owner_user_id=base.throne_test_send_leaderboard_owner_user_id,
+        leaderboard_limit=base.leaderboard_limit,
         discord_token=_env_str("DISCORD_TOKEN", required=True),
         bot_name=_env_str("BOT_NAME", "Rob"),
     )

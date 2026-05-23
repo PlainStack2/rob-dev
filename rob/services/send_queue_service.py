@@ -9,6 +9,7 @@ from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.sends import SendsRepository
 from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
+from rob.services.send_display import build_sub_display
 from rob.ui.cards.send import send_card
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class SendQueueService:
         guild_settings: GuildSettingsRepository,
         maintenance: MaintenanceService,
         leaderboard_service: LeaderboardService,
+        test_gifter_usernames: tuple[str, ...] = (),
         poll_interval_seconds: float = 5.0,
     ) -> None:
         self.bot = bot
@@ -30,6 +32,7 @@ class SendQueueService:
         self.guild_settings = guild_settings
         self.maintenance = maintenance
         self.leaderboard_service = leaderboard_service
+        self.test_gifter_usernames = test_gifter_usernames
         self.poll_interval_seconds = poll_interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._stopping = False
@@ -105,12 +108,24 @@ class SendQueueService:
             await self.sends.mark_failed(send.id, error="Configured send tracking channel is not a text channel.")
             return False
 
+        previous_leader = await self.leaderboard_service.get_current_leader(send.guild_id)
         try:
-            msg = send_card(send=send, domme_label=f"<@{send.domme_user_id}>", sub_label=f"<@{send.sub_user_id}>" if send.sub_user_id else send.sub_name)
+            msg = send_card(
+                send=send,
+                domme_label=f"<@{send.domme_user_id}>",
+                sub_display=build_sub_display(
+                    send,
+                    test_gifter_usernames=self.test_gifter_usernames,
+                ),
+            )
             message = await channel.send(**msg.send_kwargs())
         except discord.HTTPException as exc:
             await self.sends.mark_failed(send.id, error=f"Discord post failed: {exc}")
             return False
 
         await self.sends.mark_posted(send.id, message_id=message.id)
+        await self.leaderboard_service.maybe_post_leader_alert(
+            send.guild_id,
+            previous_leader_user_id=previous_leader.user_id if previous_leader is not None else None,
+        )
         return True

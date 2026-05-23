@@ -52,25 +52,48 @@ class _FakeBot:
 
 class _FakeSettingsRepo:
     async def get(self, _):
-        return SimpleNamespace(leaderboard_channel_id=123)
+        return SimpleNamespace(leaderboard_channel_id=123, send_track_channel_id=321)
 
     async def list_guild_ids(self):
         return [1]
+
+
+class _FakeBotStateRepo:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    async def get_text(self, key: str):
+        return self.values.get(key)
+
+    async def set_value(self, key: str, value: str):
+        self.values[key] = value
+
+
+class _FakeMaintenance:
+    def __init__(self, enabled: bool = False):
+        self.enabled = enabled
+
+    async def is_enabled(self) -> bool:
+        return self.enabled
+
+    async def get_leaderboard_status(self):
+        return "maintenance" if self.enabled else "live"
 
 
 class _FakeLeaderboardsRepo:
     def __init__(self):
         self.refs = {}
         self.upserts = []
+        self.current_leader = LeaderboardEntry(label='@Domme', user_id=1, total_cents=1000, send_count=2)
 
-    async def get_summary(self, _):
+    async def get_summary(self, *_args, **_kwargs):
         return LeaderboardSummary(total_cents=1000, send_count=2, domme_count=1, sub_count=1, unclaimed_send_count=0, unclaimed_total_cents=0)
 
-    async def get_top_dommes(self, _):
+    async def get_top_dommes(self, *_args, **_kwargs):
         return [LeaderboardEntry(label='@Domme', user_id=1, total_cents=1000, send_count=2)]
 
-    async def get_top_subs(self, _):
-        return [LeaderboardEntry(label='@Sub', user_id=2, total_cents=1000, send_count=2)]
+    async def get_current_leader(self, *_args, **_kwargs):
+        return self.current_leader
 
     async def get_message(self, guild_id, message_key):
         return self.refs.get((guild_id, message_key))
@@ -80,15 +103,33 @@ class _FakeLeaderboardsRepo:
         self.refs[(kwargs['guild_id'], kwargs['message_key'])] = SimpleNamespace(message_id=kwargs['message_id'])
 
 
+def _service(
+    channel: _FakeChannel,
+    *,
+    repo: _FakeLeaderboardsRepo | None = None,
+    state: _FakeBotStateRepo | None = None,
+    maintenance: _FakeMaintenance | None = None,
+) -> LeaderboardService:
+    repo = repo or _FakeLeaderboardsRepo()
+    state = state or _FakeBotStateRepo()
+    maintenance = maintenance or _FakeMaintenance()
+    return LeaderboardService(
+        bot=_FakeBot(_FakeGuild(channel)),
+        guild_settings=_FakeSettingsRepo(),
+        leaderboards=repo,
+        bot_state=state,
+        maintenance=maintenance,
+        leaderboard_limit=10,
+        include_test_sends=False,
+        test_gifter_usernames=("marie_123",),
+        owner_test_user_id=None,
+    )
+
+
 def test_refresh_posts_main_and_stats_messages_not_sub_leaderboard(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
     channel = _FakeChannel()
-    guild = _FakeGuild(channel)
-    service = LeaderboardService(
-        bot=_FakeBot(guild),
-        guild_settings=_FakeSettingsRepo(),
-        leaderboards=_FakeLeaderboardsRepo(),
-    )
+    service = _service(channel)
 
     ok = asyncio.run(service.refresh_guild(1))
     assert ok is True
@@ -96,22 +137,83 @@ def test_refresh_posts_main_and_stats_messages_not_sub_leaderboard(monkeypatch: 
 
     first_text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[0]["view"].children[0].children)
     second_text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[1]["view"].children[0].children)
-    assert 'Thy Send Leaderboard' in first_text
-    assert 'Thy Send Leaderboard | Stats' in second_text
+    assert "Thy Send Leaderboard" in first_text
+    assert "-# 🟢 Live" in first_text
+    assert "Thy Send Leaderboard | Stats" in second_text
+
+
+def test_refresh_shows_maintenance_status_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    service = _service(channel, maintenance=_FakeMaintenance(enabled=True))
+
+    asyncio.run(service.refresh_guild(1))
+
+    first_text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[0]["view"].children[0].children)
+    assert "-# 🟠 Paused (Maintenance)" in first_text
 
 
 def test_refresh_uses_new_message_keys_for_upsert(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
     channel = _FakeChannel()
-    guild = _FakeGuild(channel)
     repo = _FakeLeaderboardsRepo()
-    service = LeaderboardService(
-        bot=_FakeBot(guild),
-        guild_settings=_FakeSettingsRepo(),
-        leaderboards=repo,
-    )
+    service = _service(channel, repo=repo)
 
     asyncio.run(service.refresh_guild(1))
 
-    keys = [u['message_key'] for u in repo.upserts]
-    assert keys == ['leaderboard', 'leaderboard_stats']
+    keys = [u["message_key"] for u in repo.upserts]
+    assert keys == ["leaderboard", "leaderboard_stats"]
+
+
+def test_leader_alert_posts_when_leader_changes(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    repo = _FakeLeaderboardsRepo()
+    repo.current_leader = LeaderboardEntry(label='@New', user_id=2, total_cents=2000, send_count=3)
+    state = _FakeBotStateRepo()
+    service = _service(channel, repo=repo, state=state)
+
+    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=1))
+
+    assert posted is True
+    assert len(channel.sends) == 1
+    text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[0]["view"].children[0].children)
+    assert "NEW LEADER ALERT" in text
+    assert state.values["leader_alert:last_announced:1"] == "2"
+
+
+def test_leader_alert_does_not_post_when_maintenance_enabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    repo = _FakeLeaderboardsRepo()
+    repo.current_leader = LeaderboardEntry(label='@New', user_id=2, total_cents=2000, send_count=3)
+    service = _service(channel, repo=repo, maintenance=_FakeMaintenance(enabled=True))
+
+    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=1))
+
+    assert posted is False
+    assert channel.sends == []
+
+
+def test_leader_alert_does_not_post_when_leader_stays_same(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    service = _service(channel)
+
+    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=1))
+
+    assert posted is False
+    assert channel.sends == []
+
+
+def test_leader_alert_does_not_post_on_first_real_leader(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    repo = _FakeLeaderboardsRepo()
+    repo.current_leader = LeaderboardEntry(label='@First', user_id=5, total_cents=1000, send_count=1)
+    service = _service(channel, repo=repo)
+
+    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=None))
+
+    assert posted is False
+    assert channel.sends == []

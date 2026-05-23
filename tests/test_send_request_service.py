@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from rob.database.repositories.models import SendRecord, SendRequestRecord
 from rob.services.send_request_service import SendRequestService
@@ -29,11 +29,11 @@ class _FakeSendRequestsRepo:
 
 class _FakeSendService:
     async def record_manual_send(self, **kwargs):
-        return SendRecord(1, kwargs['guild_id'], kwargs.get('domme_id'), kwargs['domme_user_id'], None, None, None, kwargs['amount_cents'], kwargs['currency'], kwargs['method'], 'manual', kwargs['note'], None, None, None, None, False, False, datetime.now(UTC), datetime.now(UTC), 'pending', None, None, None, datetime.now(UTC))
+        return SendRecord(1, kwargs['guild_id'], kwargs.get('domme_id'), kwargs['domme_user_id'], None, None, None, kwargs['amount_cents'], kwargs['currency'], kwargs['method'], 'manual', kwargs['note'], None, None, None, None, False, False, datetime.now(timezone.utc), datetime.now(timezone.utc), 'pending', None, None, None, datetime.now(timezone.utc))
 
 
 def _request() -> SendRequestRecord:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return SendRequestRecord(11, 1, 2, 3, 1099, 'USD', 'paypal', 'proof', 'pending', now, None)
 
 

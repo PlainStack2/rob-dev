@@ -91,6 +91,18 @@ class SendRecord:
     discord_message_id: int | None
     discord_post_error: str | None
     created_at: datetime
+    is_test_send: bool = False
+    _public_send_id: str | None = None
+
+    @property
+    def public_send_id(self) -> str:
+        from rob.utils.send_ids import build_public_send_id
+
+        return self._public_send_id or build_public_send_id(self)
+
+    @property
+    def stored_public_send_id(self) -> str | None:
+        return self._public_send_id
 
 
 @dataclass(frozen=True)
@@ -114,6 +126,7 @@ class NewSend:
     seeded: bool
     sent_at: datetime
     discord_post_status: str
+    is_test_send: bool = False
 
 
 @dataclass(frozen=True)

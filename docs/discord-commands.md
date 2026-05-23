@@ -6,6 +6,7 @@ Rob keeps Discord commands user-facing and narrow.
 
 - `/register domme`
 - `/register sub`
+- `/send details`
 - `/sendrequest`
 - `/leaderboard`
 
@@ -22,3 +23,9 @@ Rob keeps Discord commands user-facing and narrow.
 Rob does not expose broad admin dashboards, event control commands, or deployment actions in Discord.
 
 Maintenance mode, queue management, service restarts, database checks, and leaderboard refresh requests should be handled from the backend with `scripts/robctl`.
+
+## Registration Notes
+
+- `/register domme` now checks the configured `domme_role_id` in `guild_settings` at runtime.
+- `/register sub` now checks the configured `sub_role_id` in `guild_settings` at runtime.
+- If the required role is missing from server config or the user does not have it, Rob denies the command with a Components V2 permission card and an ephemeral response.

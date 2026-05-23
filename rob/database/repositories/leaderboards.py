@@ -10,6 +10,26 @@ from rob.database.repositories.models import (
 )
 
 
+def _normalized_test_usernames(test_gifter_usernames: tuple[str, ...] | list[str]) -> list[str]:
+    return [value.strip().lower() for value in test_gifter_usernames if value.strip()]
+
+
+def _counted_send_filter(alias: str = "s") -> str:
+    return f"""
+        {alias}.guild_id = $1
+        AND {alias}.discord_post_status = 'posted'
+        AND {alias}.is_private = false
+        AND (
+            $2::bool
+            OR NOT (
+                COALESCE({alias}.is_test_send, false)
+                OR lower(COALESCE({alias}.sub_name, '')) = ANY($3::text[])
+            )
+            OR ($4::bigint IS NOT NULL AND {alias}.domme_user_id = $4)
+        )
+    """
+
+
 def _build_message_ref(row: Record) -> LeaderboardMessageRef:
     return LeaderboardMessageRef(
         id=int(row["id"]),
@@ -27,22 +47,47 @@ class LeaderboardsRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    async def get_summary(self, guild_id: int) -> LeaderboardSummary:
+    async def get_summary(
+        self,
+        guild_id: int,
+        *,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] | list[str] = (),
+        owner_test_user_id: int | None = None,
+    ) -> LeaderboardSummary:
+        usernames = _normalized_test_usernames(test_gifter_usernames)
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
-                """
+                f"""
+                WITH valid_sends AS (
+                    SELECT *
+                    FROM sends s
+                    WHERE {_counted_send_filter("s")}
+                )
                 SELECT
-                    COALESCE(SUM(amount_cents), 0) AS total_cents,
-                    COUNT(*) AS send_count,
-                    COUNT(DISTINCT domme_user_id) AS domme_count,
-                    COUNT(DISTINCT sub_user_id) FILTER (WHERE sub_user_id IS NOT NULL) AS sub_count,
-                    COUNT(*) FILTER (WHERE sub_user_id IS NULL) AS unclaimed_send_count,
-                    COALESCE(SUM(amount_cents) FILTER (WHERE sub_user_id IS NULL), 0) AS unclaimed_total_cents
-                FROM sends
-                WHERE guild_id = $1
-                AND discord_post_status = 'posted'
+                    COALESCE((SELECT SUM(amount_cents) FROM valid_sends), 0) AS total_cents,
+                    (SELECT COUNT(*) FROM valid_sends) AS send_count,
+                    (SELECT COUNT(*) FROM dommes WHERE guild_id = $1) AS domme_count,
+                    (
+                        SELECT COUNT(DISTINCT sub_user_id)
+                        FROM valid_sends
+                        WHERE sub_user_id IS NOT NULL
+                    ) AS sub_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM valid_sends
+                        WHERE sub_user_id IS NULL
+                    ) AS unclaimed_send_count,
+                    (
+                        SELECT COALESCE(SUM(amount_cents), 0)
+                        FROM valid_sends
+                        WHERE sub_user_id IS NULL
+                    ) AS unclaimed_total_cents
                 """,
                 guild_id,
+                include_test_sends,
+                usernames,
+                owner_test_user_id,
             )
         assert row is not None
         return LeaderboardSummary(
@@ -54,22 +99,41 @@ class LeaderboardsRepository:
             unclaimed_total_cents=int(row["unclaimed_total_cents"] or 0),
         )
 
-    async def get_top_dommes(self, guild_id: int, *, limit: int = 10) -> list[LeaderboardEntry]:
+    async def get_top_dommes(
+        self,
+        guild_id: int,
+        *,
+        limit: int = 10,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] | list[str] = (),
+        owner_test_user_id: int | None = None,
+    ) -> list[LeaderboardEntry]:
+        usernames = _normalized_test_usernames(test_gifter_usernames)
         async with self.database.acquire() as connection:
             rows = await connection.fetch(
-                """
+                f"""
+                WITH valid_sends AS (
+                    SELECT *
+                    FROM sends s
+                    WHERE {_counted_send_filter("s")}
+                )
                 SELECT
-                    domme_user_id AS user_id,
-                    COALESCE(SUM(amount_cents), 0) AS total_cents,
-                    COUNT(*) AS send_count
-                FROM sends
-                WHERE guild_id = $1
-                AND discord_post_status = 'posted'
-                GROUP BY domme_user_id
-                ORDER BY total_cents DESC, send_count DESC, domme_user_id ASC
-                LIMIT $2
+                    d.discord_user_id AS user_id,
+                    COALESCE(SUM(v.amount_cents), 0) AS total_cents,
+                    COUNT(v.id) AS send_count
+                FROM dommes d
+                LEFT JOIN valid_sends v
+                    ON v.guild_id = d.guild_id
+                    AND v.domme_user_id = d.discord_user_id
+                WHERE d.guild_id = $1
+                GROUP BY d.discord_user_id
+                ORDER BY total_cents DESC, send_count DESC, d.discord_user_id ASC
+                LIMIT $5
                 """,
                 guild_id,
+                include_test_sends,
+                usernames,
+                owner_test_user_id,
                 limit,
             )
         return [
@@ -82,10 +146,36 @@ class LeaderboardsRepository:
             for row in rows
         ]
 
-    async def get_top_subs(self, guild_id: int, *, limit: int = 10) -> list[LeaderboardEntry]:
+    async def get_current_leader(
+        self,
+        guild_id: int,
+        *,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] | list[str] = (),
+        owner_test_user_id: int | None = None,
+    ) -> LeaderboardEntry | None:
+        entries = await self.get_top_dommes(
+            guild_id,
+            limit=1,
+            include_test_sends=include_test_sends,
+            test_gifter_usernames=test_gifter_usernames,
+            owner_test_user_id=owner_test_user_id,
+        )
+        return entries[0] if entries else None
+
+    async def get_top_subs(
+        self,
+        guild_id: int,
+        *,
+        limit: int = 10,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] | list[str] = (),
+        owner_test_user_id: int | None = None,
+    ) -> list[LeaderboardEntry]:
+        usernames = _normalized_test_usernames(test_gifter_usernames)
         async with self.database.acquire() as connection:
             rows = await connection.fetch(
-                """
+                f"""
                 SELECT
                     sends.sub_user_id AS user_id,
                     MIN(subs.send_name) AS send_name,
@@ -93,14 +183,16 @@ class LeaderboardsRepository:
                     COUNT(*) AS send_count
                 FROM sends
                 JOIN subs ON subs.id = sends.sub_id
-                WHERE sends.guild_id = $1
-                AND sends.discord_post_status = 'posted'
+                WHERE {_counted_send_filter("sends")}
                 AND sends.sub_user_id IS NOT NULL
                 GROUP BY sends.sub_user_id
                 ORDER BY total_cents DESC, send_count DESC, sends.sub_user_id ASC
-                LIMIT $2
+                LIMIT $5
                 """,
                 guild_id,
+                include_test_sends,
+                usernames,
+                owner_test_user_id,
                 limit,
             )
         return [
@@ -118,7 +210,7 @@ class LeaderboardsRepository:
             row = await connection.fetchrow(
                 """
                 SELECT *
-                FROM leaderboard_messages
+                FROM leaderboard_message
                 WHERE guild_id = $1
                 AND message_key = $2
                 """,
@@ -141,7 +233,7 @@ class LeaderboardsRepository:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                INSERT INTO leaderboard_messages (
+                INSERT INTO leaderboard_message (
                     guild_id,
                     message_key,
                     leaderboard_type,

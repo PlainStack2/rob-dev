@@ -24,9 +24,10 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 
 
 ## Throne test webhook handling
-- Test/setup webhook payloads are detected before send insertion.
-- Test events update creator setup verification timestamps (`setup_verified_at`, `last_test_webhook_at`, `last_successful_event_at`) and return `{"ok": true, "setup_verified": true}`.
-- Test events do not insert `sends` rows and do not enter the Discord send tracker queue.
+- Explicit test/setup webhook payloads are detected before send insertion.
+- Explicit test events update creator setup verification timestamps (`setup_verified_at`, `last_test_webhook_at`, `last_successful_event_at`) and return `{"ok": true, "setup_verified": true}`.
+- Explicit test events do not insert `sends` rows and do not enter the Discord send tracker queue.
+- Known test senders can still be stored as real queue items for visible card flow, but are marked `is_test_send=true` and excluded from leaderboards unless test parsing is enabled or the configured owner/test recipient override applies.
 - Runtime now uses true LayoutView-based Components V2 rendering when supported, with automatic no embed fallback if required V2 classes are unavailable.
 
 ## Old Rob wording / copy reference
@@ -51,7 +52,7 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 - Explicitly deferred to follow-up PRs: inactivity removal, DM audit forwarding, Carl-bot warn relay, rule helper, and event-window runtime/reporting.
 - Kept architecture guardrails intact: split bot/webhook services, PostgreSQL runtime, no SQLite reintroduction, no legacy single-process bot merge.
 
-- 2026-05-22: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()` and purple accent constants from `rob/ui/theme.py`; rank lines/footer removed.
-- 2026-05-22: Added NEW LEADER ALERT card (purple accent, separator-based sections) for leaderboard #1 changes (posting logic TODO/dedupe wired in queue path).
-- 2026-05-22: Leaderboard and stats cards now use explicit separator components; stats include Unclaimed Sends section.
-- 2026-05-22: `/send details` command + public Rob Send ID flow remains TODO for follow-up implementation; public send cards intentionally omit Rob Send ID.
+- 2026-05-23: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()`, thumbnails, friendly currency names, and purple accent constants from `rob/ui/theme.py`; public send IDs stay out of the public announcement card.
+- 2026-05-23: NEW LEADER ALERT posting is now wired live with bot-state dedupe and test-send exclusion.
+- 2026-05-23: Leaderboard and stats cards now use explicit separator components, include registered zero-send Dommes, and show dynamic maintenance/live status on the main board.
+- 2026-05-23: `/send details` now supports stored public Rob Send IDs backed by PostgreSQL plus staff-only raw DB ID fallback.
