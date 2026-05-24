@@ -18,6 +18,17 @@ Rob keeps Discord commands user-facing and narrow.
 
 - `/count set {number}`
 
+## Inactivity Commands
+
+- `/inactivitytest`
+- `/inactivelist`
+
+## Moderator Prefix Commands
+
+- `!rob-blacklist <discord_user_id_or_mention> [reason]`
+- `!rob-unblacklist <discord_user_id_or_mention>`
+- `!throne-blacklist <discord_user_id_or_mention>`
+
 ## Removed/Not Planned
 
 Rob does not expose broad admin dashboards, event control commands, or deployment actions in Discord.
@@ -37,3 +48,4 @@ Maintenance mode, queue management, service restarts, database checks, and leade
 - Public leaderboard channel messages are updated by the send queue and `robctl leaderboard refresh`, not by `/leaderboard`.
 - `/sendrequest` is restricted to users with the configured `sub_role_id` in `guild_settings`.
 - `/report` opens a modal for Rob issue reports and requires acknowledgement that the report is about Rob (not member moderation reports).
+- Warn-log relay is automatic when `guild_settings.warn_log_channel_id` and `guild_settings.carlbot_user_id` are configured.

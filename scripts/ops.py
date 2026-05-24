@@ -7,11 +7,15 @@ from dataclasses import dataclass
 from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 from rob.database.repositories import (
+    BlacklistRepository,
     BotStateRepository,
     CountingRepository,
+    DommesRepository,
     GuildSettingsRepository,
     LeaderboardsRepository,
     SendsRepository,
+    SubsRepository,
+    ThroneCreatorsRepository,
 )
 from rob.services.maintenance_service import MaintenanceService
 
@@ -60,13 +64,37 @@ def build_parser() -> argparse.ArgumentParser:
 
     throne = subparsers.add_parser("throne", help="Throne send operations.")
     throne_subparsers = throne.add_subparsers(dest="throne_command", required=True)
-    throne_subparsers.add_parser("status", help="Show Throne command support status.")
-    throne_subparsers.add_parser("dommes", help="Show Throne domme helper status.")
-    throne_subparsers.add_parser("subs", help="Show Throne sub helper status.")
+    throne_status = throne_subparsers.add_parser("status", help="Show Throne creator status.")
+    throne_status.add_argument("--guild-id", type=int, default=None)
+    throne_status.add_argument("--handle", type=str, default=None)
+    throne_dommes = throne_subparsers.add_parser("dommes", help="List registered Throne creators.")
+    throne_dommes.add_argument("--guild-id", type=int, default=None)
+    throne_subs = throne_subparsers.add_parser("subs", help="List registered subs.")
+    throne_subs.add_argument("--guild-id", type=int, default=None)
     throne_subparsers.add_parser(
         "invalidate-test-sends",
         help="Mark known Throne test-user sends so leaderboards can exclude them.",
     )
+
+    inactivity = subparsers.add_parser("inactivity", help="Inactivity system operations.")
+    inactivity_subparsers = inactivity.add_subparsers(dest="inactivity_command", required=True)
+    inactivity_status = inactivity_subparsers.add_parser("status", help="Show inactivity status.")
+    inactivity_status.add_argument("--guild-id", type=int, default=None)
+    inactivity_on = inactivity_subparsers.add_parser("on", help="Enable inactivity processing.")
+    inactivity_on.add_argument("--guild-id", type=int, default=None)
+    inactivity_off = inactivity_subparsers.add_parser("off", help="Disable inactivity processing.")
+    inactivity_off.add_argument("--guild-id", type=int, default=None)
+
+    blacklist = subparsers.add_parser("blacklist", help="Manage Rob global blacklist.")
+    blacklist_subparsers = blacklist.add_subparsers(dest="blacklist_command", required=True)
+    blacklist_add = blacklist_subparsers.add_parser("add", help="Add a user to blacklist.")
+    blacklist_add.add_argument("discord_user_id", type=int)
+    blacklist_add.add_argument("--reason", type=str, default="manual")
+    blacklist_add.add_argument("--created-by", type=int, default=None)
+    blacklist_remove = blacklist_subparsers.add_parser("remove", help="Remove a user from blacklist.")
+    blacklist_remove.add_argument("discord_user_id", type=int)
+    blacklist_list = blacklist_subparsers.add_parser("list", help="List blacklist entries.")
+    blacklist_list.add_argument("--limit", type=int, default=100)
 
     sends = subparsers.add_parser("sends", help="Send record operations.")
     sends_subparsers = sends.add_subparsers(dest="sends_command", required=True)
@@ -106,6 +134,10 @@ class OperationsContext:
     bot_state: BotStateRepository
     maintenance: MaintenanceService
     sends: SendsRepository
+    dommes: DommesRepository
+    subs: SubsRepository
+    throne_creators: ThroneCreatorsRepository
+    blacklist: BlacklistRepository
     leaderboards: LeaderboardsRepository
     guild_settings: GuildSettingsRepository
     counting: CountingRepository
@@ -123,6 +155,10 @@ async def create_context() -> OperationsContext:
         bot_state=bot_state,
         maintenance=MaintenanceService(bot_state),
         sends=SendsRepository(database),
+        dommes=DommesRepository(database),
+        subs=SubsRepository(database),
+        throne_creators=ThroneCreatorsRepository(database),
+        blacklist=BlacklistRepository(database),
         leaderboards=LeaderboardsRepository(database),
         guild_settings=GuildSettingsRepository(database),
         counting=CountingRepository(database),
@@ -334,8 +370,55 @@ async def handle_count(ctx: OperationsContext, args: argparse.Namespace) -> None
 
 
 async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> None:
-    if args.throne_command in {"status", "dommes", "subs"}:
-        print(f"{args.throne_command}=planned but not implemented in this robctl release")
+    if args.throne_command == "status":
+        guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
+        handle = (getattr(args, "handle", None) or "").strip()
+        if handle:
+            creator = await ctx.throne_creators.get_by_handle(guild_id, handle)
+            if creator is None:
+                print(f"guild_id={guild_id}")
+                print(f"handle=@{handle}")
+                print("found=false")
+                return
+            print(f"guild_id={guild_id}")
+            print(f"handle=@{creator.throne_handle}")
+            print("found=true")
+            print(f"creator_id={creator.throne_creator_id}")
+            print(f"discord_user_id={creator.discord_user_id}")
+            print(f"tracking_mode={creator.tracking_mode}")
+            print(f"webhook_connected_at={creator.webhook_connected_at or ''}")
+            print(f"last_successful_event_at={creator.last_successful_event_at or ''}")
+            print(f"setup_verified_at={creator.setup_verified_at or ''}")
+            return
+
+        creators = await ctx.throne_creators.list_for_guild(guild_id)
+        setup_verified = sum(1 for row in creators if row.setup_verified_at is not None)
+        print(f"guild_id={guild_id}")
+        print(f"registered_creators={len(creators)}")
+        print(f"setup_verified={setup_verified}")
+        return
+    if args.throne_command == "dommes":
+        guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
+        creators = await ctx.throne_creators.list_for_guild(guild_id)
+        print(f"guild_id={guild_id}")
+        print(f"rows={len(creators)}")
+        for row in creators:
+            print(
+                f"handle=@{row.throne_handle} creator_id={row.throne_creator_id} "
+                f"discord_user_id={row.discord_user_id} mode={row.tracking_mode} "
+                f"last_successful_event_at={row.last_successful_event_at or ''}"
+            )
+        return
+    if args.throne_command == "subs":
+        guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
+        subs = await ctx.subs.list_for_guild(guild_id)
+        print(f"guild_id={guild_id}")
+        print(f"rows={len(subs)}")
+        for row in subs:
+            print(
+                f"discord_user_id={row.discord_user_id} send_name={row.send_name} "
+                f"registered_at={row.registered_at.isoformat()}"
+            )
         return
     if args.throne_command == "invalidate-test-sends":
         usernames = list(ctx.settings.throne_test_gifter_usernames)
@@ -344,6 +427,57 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print(f"usernames={','.join(usernames)}")
         return
     raise RuntimeError(f"Unsupported throne command: {args.throne_command}")
+
+
+async def handle_inactivity(ctx: OperationsContext, args: argparse.Namespace) -> None:
+    guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
+    key = f"inactivity:{guild_id}:enabled"
+    if args.inactivity_command == "status":
+        enabled = await ctx.bot_state.get_bool(
+            key,
+            default=ctx.settings.inactivity_enabled_default,
+        )
+        print(f"guild_id={guild_id}")
+        print(f"enabled={'true' if enabled else 'false'}")
+        return
+    if args.inactivity_command == "on":
+        await ctx.bot_state.set_value(key, "true")
+        print(f"guild_id={guild_id}")
+        print("enabled=true")
+        return
+    if args.inactivity_command == "off":
+        await ctx.bot_state.set_value(key, "false")
+        print(f"guild_id={guild_id}")
+        print("enabled=false")
+        return
+    raise RuntimeError(f"Unsupported inactivity command: {args.inactivity_command}")
+
+
+async def handle_blacklist(ctx: OperationsContext, args: argparse.Namespace) -> None:
+    if args.blacklist_command == "add":
+        await ctx.blacklist.add(
+            discord_user_id=int(args.discord_user_id),
+            reason=(args.reason or "manual").strip() or "manual",
+            created_by=args.created_by,
+        )
+        print(f"discord_user_id={int(args.discord_user_id)}")
+        print("updated=1")
+        return
+    if args.blacklist_command == "remove":
+        await ctx.blacklist.remove(int(args.discord_user_id))
+        print(f"discord_user_id={int(args.discord_user_id)}")
+        print("updated=1")
+        return
+    if args.blacklist_command == "list":
+        rows = await ctx.blacklist.list_entries(limit=max(1, int(args.limit)))
+        print(f"rows={len(rows)}")
+        for user_id, reason, created_by, created_at in rows:
+            print(
+                f"discord_user_id={user_id} reason={reason or ''} "
+                f"created_by={created_by or 0} created_at={created_at.isoformat()}"
+            )
+        return
+    raise RuntimeError(f"Unsupported blacklist command: {args.blacklist_command}")
 
 
 async def handle_sends(ctx: OperationsContext, args: argparse.Namespace) -> None:
@@ -398,6 +532,10 @@ async def main_async() -> None:
             await handle_count(ctx, args)
         elif args.command == "throne":
             await handle_throne(ctx, args)
+        elif args.command == "inactivity":
+            await handle_inactivity(ctx, args)
+        elif args.command == "blacklist":
+            await handle_blacklist(ctx, args)
         elif args.command == "sends":
             await handle_sends(ctx, args)
         else:
