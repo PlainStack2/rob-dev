@@ -9,6 +9,7 @@ Rob keeps Discord commands user-facing and narrow.
 - `/sendrequest`
 - `/leaderboard`
 - `/report`
+- `/privacy`
 
 ## Dom/me Commands
 
@@ -48,4 +49,5 @@ Maintenance mode, queue management, service restarts, database checks, and leade
 - Public leaderboard channel messages are updated by the send queue and `robctl leaderboard refresh`, not by `/leaderboard`.
 - `/sendrequest` is restricted to users with the configured `sub_role_id` in `guild_settings`.
 - `/report` opens a modal for Rob issue reports and requires acknowledgement that the report is about Rob (not member moderation reports).
+- `/privacy` posts a multi-container privacy notice that explains data collection scope, usage, and Rob's data-minimization commitment.
 - Warn-log relay is automatic when `guild_settings.warn_log_channel_id` and `guild_settings.carlbot_user_id` are configured.

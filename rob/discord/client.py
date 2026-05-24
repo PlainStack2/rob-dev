@@ -24,6 +24,7 @@ from rob.discord.cogs.admin_tools import AdminToolsCog
 from rob.discord.cogs.counting import CountingCog
 from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
+from rob.discord.cogs.privacy import PrivacyCog
 from rob.discord.cogs.registration import RegistrationCog
 from rob.discord.cogs.reports import ReportsCog
 from rob.discord.cogs.sends import SendsCog
@@ -138,6 +139,7 @@ class RobBot(commands.Bot):
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
+        await self.add_cog(PrivacyCog(self))
         await self.add_cog(CountingCog(self))
         await self.add_cog(ReportsCog(self))
         await self.add_cog(InactivityCog(self))
