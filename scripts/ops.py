@@ -7,6 +7,8 @@ import re
 import secrets
 from dataclasses import dataclass
 
+import discord
+
 from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 from rob.database.repositories import (
@@ -29,6 +31,48 @@ from rob.utils.money import dollars_to_cents
 
 
 _USER_REF_RE = re.compile(r"<@!?(\d+)>")
+
+GUILD_CHANNEL_FIELDS = (
+    "registration_channel_id",
+    "leaderboard_channel_id",
+    "send_track_channel_id",
+    "counting_channel_id",
+    "report_channel_id",
+    "warn_log_channel_id",
+)
+
+GUILD_CHANNEL_LABELS = {
+    "registration_channel_id": "Registration Channel",
+    "leaderboard_channel_id": "Leaderboard Channel",
+    "send_track_channel_id": "Send Tracker Channel",
+    "counting_channel_id": "Counting Channel",
+    "report_channel_id": "Report Channel",
+    "warn_log_channel_id": "Warn Log Channel",
+}
+
+GUILD_CHANNEL_MATCH_TOKENS = {
+    "registration_channel_id": ("registration", "register", "setup", "welcome"),
+    "leaderboard_channel_id": ("leaderboard", "rank", "leader-board"),
+    "send_track_channel_id": ("send-tracker", "send-tracking", "sendtracker", "throne", "sends"),
+    "counting_channel_id": ("counting", "count"),
+    "report_channel_id": ("report", "support", "help"),
+    "warn_log_channel_id": ("warn", "warning", "mod-log", "logs", "log"),
+}
+
+
+@dataclass(frozen=True)
+class LiveGuildChannel:
+    channel_id: int
+    name: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class LiveGuildScanResult:
+    guild_id: int
+    guild_name: str | None
+    channels: tuple[LiveGuildChannel, ...]
+    error: str | None = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -183,6 +227,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sends_mark_posted.add_argument("send_id", type=int)
 
+    guild = subparsers.add_parser("guild", help="Guild settings inspection and repair.")
+    guild_subparsers = guild.add_subparsers(dest="guild_command", required=True)
+    guild_scan = guild_subparsers.add_parser(
+        "scan",
+        help="Inspect guild channel settings and suggest DB update commands.",
+    )
+    guild_scan.add_argument("--guild-id", type=int, required=True)
+    guild_set_channel = guild_subparsers.add_parser(
+        "set-channel",
+        help="Update one guild_settings channel field.",
+    )
+    guild_set_channel.add_argument("--guild-id", type=int, required=True)
+    guild_set_channel.add_argument(
+        "--field",
+        choices=GUILD_CHANNEL_FIELDS,
+        required=True,
+    )
+    guild_set_channel_group = guild_set_channel.add_mutually_exclusive_group(required=True)
+    guild_set_channel_group.add_argument("--channel-id", type=int)
+    guild_set_channel_group.add_argument("--clear", action="store_true")
+
     count = subparsers.add_parser("count", help="Counting operations.")
     count_subparsers = count.add_subparsers(dest="count_command", required=True)
     count_status = count_subparsers.add_parser("status", help="Show counting state.")
@@ -287,6 +352,75 @@ def print_header(title: str) -> None:
 
 def print_field(label: str, value: object) -> None:
     print(f"- {label}: {value}")
+
+
+def _normalize_channel_name(name: str) -> str:
+    return name.strip().lower().replace("_", "-").replace(" ", "-")
+
+
+def _find_best_channel_match(
+    channels: tuple[LiveGuildChannel, ...],
+    field_name: str,
+) -> LiveGuildChannel | None:
+    tokens = GUILD_CHANNEL_MATCH_TOKENS[field_name]
+    scored: list[tuple[int, LiveGuildChannel]] = []
+    for channel in channels:
+        normalized = _normalize_channel_name(channel.name)
+        score = 0
+        for token in tokens:
+            if normalized == token:
+                score = max(score, 100)
+            elif normalized.startswith(token):
+                score = max(score, 75)
+            elif token in normalized:
+                score = max(score, 50)
+        if score:
+            scored.append((score, channel))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], item[1].name, item[1].channel_id))
+    return scored[0][1]
+
+
+async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
+    token = (os.getenv("DISCORD_TOKEN") or "").strip()
+    if not token:
+        return LiveGuildScanResult(
+            guild_id=guild_id,
+            guild_name=None,
+            channels=(),
+            error="DISCORD_TOKEN is not configured for live guild scanning.",
+        )
+
+    client = discord.Client(intents=discord.Intents.none())
+    try:
+        await client.login(token)
+        guild = await client.fetch_guild(guild_id)
+        channels = await guild.fetch_channels()
+    except discord.HTTPException as exc:
+        return LiveGuildScanResult(
+            guild_id=guild_id,
+            guild_name=None,
+            channels=(),
+            error=f"Discord scan failed: {exc}",
+        )
+    finally:
+        await client.close()
+
+    text_channels = tuple(
+        LiveGuildChannel(
+            channel_id=channel.id,
+            name=channel.name,
+            kind=type(channel).__name__,
+        )
+        for channel in channels
+        if isinstance(channel, discord.TextChannel)
+    )
+    return LiveGuildScanResult(
+        guild_id=guild_id,
+        guild_name=guild.name,
+        channels=tuple(sorted(text_channels, key=lambda item: (item.name, item.channel_id))),
+    )
 
 
 async def handle_status(ctx: OperationsContext) -> None:
@@ -890,6 +1024,81 @@ async def handle_sends(ctx: OperationsContext, args: argparse.Namespace) -> None
     raise RuntimeError(f"Unsupported sends command: {args.sends_command}")
 
 
+async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None:
+    guild_id = int(args.guild_id)
+    if args.guild_command == "scan":
+        settings = await ctx.guild_settings.get(guild_id)
+        live = await fetch_live_guild_scan(guild_id)
+
+        print_header("Guild Scan")
+        print_field("Guild ID", guild_id)
+        print_field("Guild Name", live.guild_name or "(unknown)")
+        print_field("Live Text Channels", len(live.channels))
+        print(f"guild_id={guild_id}")
+        print(f"guild_name={live.guild_name or ''}")
+        print(f"live_text_channels={len(live.channels)}")
+
+        if live.error:
+            print_field("Live Scan", live.error)
+            print(f"live_scan_error={live.error}")
+
+        configured_channel_ids = {
+            field_name: getattr(settings, field_name, None) if settings is not None else None
+            for field_name in GUILD_CHANNEL_FIELDS
+        }
+        channel_lookup = {channel.channel_id: channel for channel in live.channels}
+
+        for field_name in GUILD_CHANNEL_FIELDS:
+            label = GUILD_CHANNEL_LABELS[field_name]
+            configured_id = configured_channel_ids[field_name]
+            configured_channel = channel_lookup.get(configured_id) if configured_id is not None else None
+            suggested_channel = _find_best_channel_match(live.channels, field_name)
+
+            status = "missing"
+            if configured_id is not None and configured_channel is not None:
+                status = "configured"
+            elif configured_id is not None:
+                status = "configured_missing"
+
+            print(f"{field_name}={configured_id or ''}")
+            print(f"{field_name}_status={status}")
+            if suggested_channel is not None:
+                print(f"{field_name}_suggested={suggested_channel.channel_id}")
+
+            print(f"{label}:")
+            if configured_id is None:
+                print("  current: (not set)")
+            elif configured_channel is None:
+                print(f"  current: {configured_id} (not found in live guild scan)")
+            else:
+                print(f"  current: #{configured_channel.name} ({configured_channel.channel_id})")
+
+            if suggested_channel is None:
+                print("  suggested: (no obvious match found)")
+            else:
+                print(f"  suggested: #{suggested_channel.name} ({suggested_channel.channel_id})")
+                print(
+                    "  command: "
+                    f"rob guild set-channel --guild-id {guild_id} --field {field_name} --channel-id {suggested_channel.channel_id}"
+                )
+        return
+
+    if args.guild_command == "set-channel":
+        channel_id = None if getattr(args, "clear", False) else int(args.channel_id)
+        updated = await ctx.guild_settings.set_channel_id(guild_id, args.field, channel_id)
+        print_header("Guild Channel Updated")
+        print_field("Guild ID", guild_id)
+        print_field("Field", args.field)
+        print_field("Channel ID", channel_id if channel_id is not None else "(cleared)")
+        print("updated=true")
+        print(f"guild_id={guild_id}")
+        print(f"field={args.field}")
+        print(f"channel_id={getattr(updated, args.field) or 0}")
+        return
+
+    raise RuntimeError(f"Unsupported guild command: {args.guild_command}")
+
+
 async def main_async() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -913,6 +1122,8 @@ async def main_async() -> None:
             await handle_blacklist(ctx, args)
         elif args.command == "sends":
             await handle_sends(ctx, args)
+        elif args.command == "guild":
+            await handle_guild(ctx, args)
         else:
             raise RuntimeError(f"Unsupported command: {args.command}")
     finally:

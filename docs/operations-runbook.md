@@ -52,6 +52,16 @@ rob sends backfill-public-ids
 rob throne invalidate-test-sends
 ```
 
+## Guild Channel Config Audit
+
+```bash
+rob guild scan --guild-id <guild_id>
+rob guild set-channel --guild-id <guild_id> --field leaderboard_channel_id --channel-id <channel_id>
+rob guild set-channel --guild-id <guild_id> --field report_channel_id --clear
+```
+
+`rob guild scan` prints the current DB values, checks whether the configured channels still exist in Discord, and suggests exact `rob guild set-channel ...` commands for missing fields.
+
 ## Throne Registration Audit
 
 ```bash

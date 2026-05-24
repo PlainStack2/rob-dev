@@ -54,6 +54,9 @@ scripts/rob blacklist list --limit 50
 scripts/rob sends backfill-public-ids
 scripts/rob sends list --status all --guild-id 123 --limit 25
 scripts/rob sends mark-posted 151
+scripts/rob guild scan --guild-id 123
+scripts/rob guild set-channel --guild-id 123 --field leaderboard_channel_id --channel-id 456
+scripts/rob guild set-channel --guild-id 123 --field report_channel_id --clear
 
 scripts/rob count status
 scripts/rob count set 123
@@ -80,6 +83,8 @@ alias rob-sends-backfill='scripts/rob sends backfill-public-ids'
 - `robctl` remains available as a compatibility shim that forwards to `rob`.
 - Deploy scripts now run `scripts/run_migrations.py` before `scripts/check_db.py`, and `check_db` validates required schema columns so deploys fail fast on schema drift.
 - `leaderboard adopt` lets you attach existing Discord message IDs to `leaderboard_message` refs (`leaderboard` + `leaderboard_stats`) so refresh/edit paths can resume without reposting.
+- `guild scan` reads current `guild_settings` channel fields, attempts a live Discord channel scan with the bot token, and prints suggested `rob guild set-channel ...` commands for missing fields.
+- `guild set-channel` updates one whitelisted `guild_settings` channel field in PostgreSQL and refreshes `updated_at`.
 - `maintenance on` now requests a leaderboard refresh automatically so the main leaderboard status switches to `🟠 Paused (Maintenance)` on the next bot refresh cycle.
 - `maintenance off` now clears maintenance mode, releases queued maintenance sends back to `pending`, and requests a leaderboard refresh so the main leaderboard can return to `🟢 Live`.
 - `throne invalidate-test-sends` marks previously recorded sends from usernames in `THRONE_TEST_GIFTER_USERNAMES` as `is_test_send=true` so they stop affecting leaderboard totals when test parsing is disabled again.

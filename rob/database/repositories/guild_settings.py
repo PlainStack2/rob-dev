@@ -6,6 +6,16 @@ from rob.database.connection import Database
 from rob.database.repositories.models import GuildSettings
 
 
+CHANNEL_FIELD_NAMES = {
+    "registration_channel_id",
+    "leaderboard_channel_id",
+    "send_track_channel_id",
+    "counting_channel_id",
+    "report_channel_id",
+    "warn_log_channel_id",
+}
+
+
 def _build_guild_settings(row: Record) -> GuildSettings:
     return GuildSettings(
         guild_id=int(row["guild_id"]),
@@ -56,3 +66,26 @@ class GuildSettingsRepository:
                 "SELECT guild_id FROM guild_settings ORDER BY guild_id ASC"
             )
         return [int(row["guild_id"]) for row in rows]
+
+    async def set_channel_id(
+        self,
+        guild_id: int,
+        field_name: str,
+        channel_id: int | None,
+    ) -> GuildSettings:
+        if field_name not in CHANNEL_FIELD_NAMES:
+            raise ValueError(f"Unsupported guild_settings channel field: {field_name}")
+
+        await self.ensure_guild(guild_id)
+        query = f"""
+            UPDATE guild_settings
+            SET {field_name} = $2,
+                updated_at = now()
+            WHERE guild_id = $1
+            RETURNING *
+        """
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(query, guild_id, channel_id)
+        if row is None:
+            raise RuntimeError(f"Failed to update guild_settings for guild_id={guild_id}")
+        return _build_guild_settings(row)
