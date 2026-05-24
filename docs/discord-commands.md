@@ -51,5 +51,5 @@ Maintenance mode, queue management, service restarts, database checks, and leade
 - `/sendrequest` is restricted to users with the configured `sub_role_id` in `guild_settings`.
 - `/report` opens a modal for Rob issue reports and requires acknowledgement that the report is about Rob (not member moderation reports).
 - `/privacy` posts a multi-container privacy notice that explains data collection scope, usage, and Rob's data-minimization commitment.
-- `/broadcast` is owner-only and DM-only; it opens a modal form to target a guild/channel and publish a styled Components V2 Rob card.
+- `/broadcast` is owner-only and DM-only; it opens a modal with an in-form style menu, optional upload field, and a target field using `guild_id:channel_id` or `guild_id:all-members`.
 - Warn-log relay is automatic when `guild_settings.warn_log_channel_id` and `guild_settings.carlbot_user_id` are configured.
