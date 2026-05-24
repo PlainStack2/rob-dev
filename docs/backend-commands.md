@@ -41,6 +41,20 @@ scripts/robctl count set 123
 
 ## Notes
 
+- Example bash aliases/functions for daily ops:
+
+```bash
+alias robctl='scripts/robctl'
+alias rob-lb-refresh='scripts/robctl leaderboard refresh'
+alias rob-lb-status='scripts/robctl leaderboard status'
+alias rob-maint-on='scripts/robctl maintenance on'
+alias rob-maint-off='scripts/robctl maintenance off'
+alias rob-queue='scripts/robctl queue status'
+alias rob-queue-flush='scripts/robctl queue flush'
+alias rob-sends='scripts/robctl sends list --status all --guild-id 123 --limit 25'
+alias rob-sends-backfill='scripts/robctl sends backfill-public-ids'
+```
+
 - `maintenance on/off`, `queue status`, `queue flush`, `leaderboard refresh`, and `count` commands talk directly to PostgreSQL through `scripts.ops`.
 - `leaderboard adopt` lets you attach existing Discord message IDs to `leaderboard_message` refs (`leaderboard` + `leaderboard_stats`) so refresh/edit paths can resume without reposting.
 - `maintenance on` now requests a leaderboard refresh automatically so the main leaderboard status switches to `🟠 Paused (Maintenance)` on the next bot refresh cycle.
