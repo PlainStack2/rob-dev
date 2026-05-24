@@ -21,6 +21,7 @@ from rob.database.repositories import (
     ThroneCreatorsRepository,
 )
 from rob.discord.cogs.admin_tools import AdminToolsCog
+from rob.discord.cogs.broadcast import BroadcastCog
 from rob.discord.cogs.counting import CountingCog
 from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
@@ -145,6 +146,7 @@ class RobBot(commands.Bot):
         await self.add_cog(InactivityCog(self))
         await self.add_cog(WarnRelayCog(self))
         await self.add_cog(AdminToolsCog(self))
+        await self.add_cog(BroadcastCog(self))
 
         self.tree.interaction_check = self._global_blacklist_interaction_check
 

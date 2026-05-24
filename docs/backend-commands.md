@@ -35,8 +35,15 @@ scripts/robctl leaderboard repair-send-dommes --guild-id 123
 
 scripts/robctl throne status --guild-id 123
 scripts/robctl throne status --guild-id 123 --handle pat
+scripts/robctl throne refresh
 scripts/robctl throne dommes --guild-id 123
+scripts/robctl throne list --guild-id 123
+scripts/robctl throne search --guild-id 123 <@123456789012345678>
 scripts/robctl throne subs --guild-id 123
+scripts/robctl throne webhook refresh --guild-id 123 <@123456789012345678>
+scripts/robctl throne addsend --guild-id 123 <@123456789012345678> 100 --sub-name marie_123 --method cashapp --note "manual adjustment"
+scripts/robctl throne addsub --guild-id 123 <@123456789012345678> marie_123
+scripts/robctl throne adddomme --guild-id 123 <@123456789012345678> https://throne.com/pat
 scripts/robctl throne invalidate-test-sends
 scripts/robctl inactivity status --guild-id 123
 scripts/robctl inactivity on --guild-id 123
