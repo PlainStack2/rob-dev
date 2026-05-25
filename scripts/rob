@@ -37,6 +37,7 @@ usage() {
   cat <<'EOF'
 Rob Control
 Usage:
+  rob [--output pretty|kv|both] status
   rob status
   rob logs [bot|webhook]
   rob restart [bot|webhook|all]
@@ -69,6 +70,14 @@ run_ops() {
   "${PYTHON_BIN}" -m scripts.ops "$@"
 }
 
+run_ops_with_global_args() {
+  if [[ ${#OPS_ARGS[@]} -gt 0 ]]; then
+    run_ops "${OPS_ARGS[@]}" "$@"
+    return
+  fi
+  run_ops "$@"
+}
+
 service_name() {
   case "${1:-bot}" in
     bot) printf '%s\n' "${ROB_BOT_SERVICE}" ;;
@@ -76,6 +85,30 @@ service_name() {
     *) return 1 ;;
   esac
 }
+
+OPS_ARGS=()
+OUTPUT_MODE="${ROB_OUTPUT_MODE:-pretty}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --output" >&2
+        exit 1
+      fi
+      OUTPUT_MODE="$2"
+      OPS_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    --output=*)
+      OUTPUT_MODE="${1#*=}"
+      OPS_ARGS+=("$1")
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 cmd="${1:-}"
 if [[ -z "${cmd}" ]]; then
@@ -86,10 +119,28 @@ shift || true
 
 case "${cmd}" in
   status)
-    run_ops status
+    run_ops_with_global_args status
     if command -v systemctl >/dev/null 2>&1; then
-      echo "bot_service=$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
-      echo "webhook_service=$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
+      bot_service="$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
+      webhook_service="$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
+      case "${OUTPUT_MODE}" in
+        pretty)
+          echo "Services:"
+          echo "- Bot Service: ${bot_service}"
+          echo "- Webhook Service: ${webhook_service}"
+          ;;
+        kv)
+          echo "bot_service=${bot_service}"
+          echo "webhook_service=${webhook_service}"
+          ;;
+        both)
+          echo "Services:"
+          echo "- Bot Service: ${bot_service}"
+          echo "- Webhook Service: ${webhook_service}"
+          echo "bot_service=${bot_service}"
+          echo "webhook_service=${webhook_service}"
+          ;;
+      esac
     fi
     ;;
   logs)
@@ -118,7 +169,7 @@ case "${cmd}" in
     esac
     ;;
   maintenance|queue|leaderboard|count|throne|sends|inactivity|blacklist|guild)
-    run_ops "${cmd}" "$@"
+    run_ops_with_global_args "${cmd}" "$@"
     ;;
   *)
     usage

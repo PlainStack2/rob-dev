@@ -10,6 +10,8 @@ scripts/install-rob-global.sh
 
 After this, `rob` is available globally from shell sessions. `robctl` still works as a compatibility alias.
 
+Use `rob --output kv ...` when you want shell-friendly key/value output. The default output is operator-focused and easier to read in a terminal session.
+
 ## Health + Service Checks
 
 ```bash
@@ -63,6 +65,8 @@ rob guild set-role --guild-id <guild_id> --field inactive_role_id --clear
 ```
 
 `rob guild scan` prints the current DB values, checks whether the configured channels and roles still exist in Discord, and suggests exact `rob guild set-channel ...` and `rob guild set-role ...` commands for missing fields.
+
+The scan now prefers the already-running bot session for live Discord data, then falls back to direct Discord REST if the local bot-ops bridge is unavailable. By default that bridge listens on `127.0.0.1:8811`. If you want to lock it down further, set `ROB_OPS_SECRET` in `.env`.
 
 ## Throne Registration Audit
 

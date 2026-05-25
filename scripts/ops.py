@@ -6,6 +6,8 @@ import os
 import re
 import secrets
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
 
 import aiohttp
 import discord
@@ -28,6 +30,7 @@ from rob.services.registration_service import RegistrationService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
 from rob.throne.security import hash_webhook_secret
+from rob.utils.money import format_money_from_cents, format_money_with_currency_name
 from rob.utils.money import dollars_to_cents
 
 
@@ -101,11 +104,22 @@ class LiveGuildScanResult:
     guild_name: str | None
     channels: tuple[LiveGuildChannel, ...]
     roles: tuple[LiveGuildRole, ...]
+    source: str
     error: str | None = None
+
+
+OutputMode = Literal["pretty", "kv", "both"]
+OUTPUT_MODE: OutputMode = "both"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Rob backend operations.")
+    parser.add_argument(
+        "--output",
+        choices=("pretty", "kv", "both"),
+        default=os.getenv("ROB_OUTPUT_MODE", "pretty"),
+        help="Output mode. pretty is default for operators, kv is script-friendly, both includes both views.",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("status", help="Show database, maintenance, and queue status.")
@@ -388,12 +402,53 @@ def parse_user_ref(value: str) -> int | None:
     return None
 
 
+def set_output_mode(mode: OutputMode) -> None:
+    global OUTPUT_MODE
+    OUTPUT_MODE = mode
+
+
+def _show_pretty() -> bool:
+    return OUTPUT_MODE in {"pretty", "both"}
+
+
+def _show_kv() -> bool:
+    return OUTPUT_MODE in {"kv", "both"}
+
+
 def print_header(title: str) -> None:
-    print(f"Rob Control | {title}")
+    if _show_pretty():
+        print(f"Rob Control | {title}")
 
 
 def print_field(label: str, value: object) -> None:
-    print(f"- {label}: {value}")
+    if _show_pretty():
+        print(f"- {label}: {value}")
+
+
+def print_section(title: str) -> None:
+    if _show_pretty():
+        print(f"{title}:")
+
+
+def print_line(text: str = "") -> None:
+    if _show_pretty():
+        print(text)
+
+
+def print_kv(key: str, value: object) -> None:
+    if _show_kv():
+        print(f"{key}={value}")
+
+
+def print_kv_raw(text: str) -> None:
+    if _show_kv():
+        print(text)
+
+
+def format_optional_datetime(value: datetime | None) -> str:
+    if value is None:
+        return "(none)"
+    return value.isoformat()
 
 
 def _normalize_channel_name(name: str) -> str:
@@ -447,6 +502,61 @@ def _find_best_role_match(
 
 
 async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
+    bot_scan = await fetch_live_guild_scan_from_bot_ops(guild_id)
+    if bot_scan is not None:
+        return bot_scan
+    return await fetch_live_guild_scan_from_discord_rest(guild_id)
+
+
+async def fetch_live_guild_scan_from_bot_ops(guild_id: int) -> LiveGuildScanResult | None:
+    host = (os.getenv("ROB_OPS_HOST") or "127.0.0.1").strip()
+    raw_port = (os.getenv("ROB_OPS_PORT") or "8811").strip()
+    secret = (os.getenv("ROB_OPS_SECRET") or "").strip()
+
+    try:
+        port = int(raw_port)
+    except ValueError:
+        return None
+
+    headers = {"User-Agent": "RobOps/1.0 (+https://github.com/PlainStack2/rob-dev)"}
+    if secret:
+        headers["X-Rob-Ops-Secret"] = secret
+
+    url = f"http://{host}:{port}/guilds/{guild_id}/scan"
+    try:
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+            async with session.get(url) as response:
+                if response.status >= 400:
+                    return None
+                payload = await response.json()
+    except (aiohttp.ClientError, TimeoutError):
+        return None
+
+    return LiveGuildScanResult(
+        guild_id=int(payload["guild_id"]),
+        guild_name=payload.get("guild_name"),
+        channels=tuple(
+            LiveGuildChannel(
+                channel_id=int(channel["id"]),
+                name=str(channel["name"]),
+                kind=str(channel.get("kind", "unknown")),
+            )
+            for channel in payload.get("channels", [])
+        ),
+        roles=tuple(
+            LiveGuildRole(
+                role_id=int(role["id"]),
+                name=str(role["name"]),
+            )
+            for role in payload.get("roles", [])
+        ),
+        source=str(payload.get("source") or "bot-session"),
+        error=payload.get("error"),
+    )
+
+
+async def fetch_live_guild_scan_from_discord_rest(guild_id: int) -> LiveGuildScanResult:
     token = (os.getenv("DISCORD_TOKEN") or "").strip()
     if not token:
         return LiveGuildScanResult(
@@ -454,6 +564,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             guild_name=None,
             channels=(),
             roles=(),
+            source="discord-rest",
             error="DISCORD_TOKEN is not configured for live guild scanning.",
         )
 
@@ -472,6 +583,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
                         guild_name=None,
                         channels=(),
                         roles=(),
+                        source="discord-rest",
                         error=f"Discord scan failed: GET /guilds/{guild_id} returned {guild_response.status}: {detail}",
                     )
                 guild_payload = await guild_response.json()
@@ -484,6 +596,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
                         guild_name=guild_payload.get("name"),
                         channels=(),
                         roles=(),
+                        source="discord-rest",
                         error=f"Discord scan failed: GET /guilds/{guild_id}/channels returned {channels_response.status}: {detail}",
                     )
                 channels_payload = await channels_response.json()
@@ -493,6 +606,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             guild_name=None,
             channels=(),
             roles=(),
+            source="discord-rest",
             error=f"Discord scan failed: {exc}",
         )
 
@@ -518,6 +632,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
         guild_name=guild_payload.get("name"),
         channels=tuple(sorted(text_channels, key=lambda item: (item.name, item.channel_id))),
         roles=live_roles,
+        source="discord-rest",
     )
 
 
@@ -528,11 +643,19 @@ async def handle_status(ctx: OperationsContext) -> None:
     print_header("Status")
     print_field("Database", "ok" if healthy else "failed")
     print_field("Maintenance", "on" if maintenance.enabled else "off")
-    print_field("Queue", f"pending={queue.pending}, queued_maintenance={queue.queued_maintenance}, posted={queue.posted}, failed={queue.failed}, ignored={queue.ignored}")
-    print(f"database_ok={healthy}")
-    print(f"maintenance_mode={'on' if maintenance.enabled else 'off'}")
-    print(f"maintenance_reason={maintenance.reason or ''}")
-    print(
+    print_field(
+        "Queue",
+        (
+            f"pending={queue.pending}, queued_maintenance={queue.queued_maintenance}, "
+            f"posted={queue.posted}, failed={queue.failed}, ignored={queue.ignored}"
+        ),
+    )
+    if maintenance.reason:
+        print_field("Reason", maintenance.reason)
+    print_kv("database_ok", healthy)
+    print_kv("maintenance_mode", "on" if maintenance.enabled else "off")
+    print_kv("maintenance_reason", maintenance.reason or "")
+    print_kv_raw(
         "queue_counts="
         f"pending:{queue.pending},"
         f"queued_maintenance:{queue.queued_maintenance},"
@@ -548,18 +671,18 @@ async def handle_maintenance(ctx: OperationsContext, args: argparse.Namespace) -
         print_header("Maintenance")
         print_field("Mode", "on" if state.enabled else "off")
         print_field("Reason", state.reason or "(none)")
-        print(f"maintenance_mode={'on' if state.enabled else 'off'}")
-        print(f"maintenance_reason={state.reason or ''}")
+        print_kv("maintenance_mode", "on" if state.enabled else "off")
+        print_kv("maintenance_reason", state.reason or "")
         return
     if args.maintenance_command == "on":
         await ctx.maintenance.enable(reason=args.reason or "")
         print_header("Maintenance")
         print_field("Mode", "on")
         print_field("Leaderboard Refresh", "requested")
-        print("maintenance_mode=on")
+        print_kv("maintenance_mode", "on")
         if args.reason:
-            print(f"maintenance_reason={args.reason}")
-        print("leaderboard_refresh=requested")
+            print_kv("maintenance_reason", args.reason)
+        print_kv("leaderboard_refresh", "requested")
         return
     if args.maintenance_command == "off":
         await ctx.maintenance.disable()
@@ -568,9 +691,9 @@ async def handle_maintenance(ctx: OperationsContext, args: argparse.Namespace) -
         print_field("Mode", "off")
         print_field("Released", released)
         print_field("Leaderboard Refresh", "requested")
-        print("maintenance_mode=off")
-        print(f"released={released}")
-        print("leaderboard_refresh=requested")
+        print_kv("maintenance_mode", "off")
+        print_kv("released", released)
+        print_kv("leaderboard_refresh", "requested")
         return
     raise RuntimeError(f"Unsupported maintenance command: {args.maintenance_command}")
 
@@ -584,11 +707,11 @@ async def handle_queue(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Posted", queue.posted)
         print_field("Failed", queue.failed)
         print_field("Ignored", queue.ignored)
-        print(f"pending={queue.pending}")
-        print(f"queued_maintenance={queue.queued_maintenance}")
-        print(f"posted={queue.posted}")
-        print(f"failed={queue.failed}")
-        print(f"ignored={queue.ignored}")
+        print_kv("pending", queue.pending)
+        print_kv("queued_maintenance", queue.queued_maintenance)
+        print_kv("posted", queue.posted)
+        print_kv("failed", queue.failed)
+        print_kv("ignored", queue.ignored)
         return
     if args.queue_command == "flush":
         if await ctx.maintenance.is_enabled():
@@ -596,7 +719,7 @@ async def handle_queue(ctx: OperationsContext, args: argparse.Namespace) -> None
         released = await ctx.sends.release_queued_maintenance()
         print_header("Queue Flush")
         print_field("Released", released)
-        print(f"released={released}")
+        print_kv("released", released)
         return
     raise RuntimeError(f"Unsupported queue command: {args.queue_command}")
 
@@ -606,7 +729,7 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_header("Leaderboard Refresh")
         print_field("Status", "requested")
         await ctx.maintenance.request_leaderboard_refresh()
-        print("leaderboard_refresh=requested")
+        print_kv("leaderboard_refresh", "requested")
         return
     if args.leaderboard_command == "adopt":
         print_header("Leaderboard Adopt")
@@ -626,11 +749,11 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
             channel_id=args.leaderboard_channel_id,
             message_id=args.stats_message_id,
         )
-        print("leaderboard_adopted=true")
-        print(f"guild_id={args.guild_id}")
-        print(f"channel_id={args.leaderboard_channel_id}")
-        print(f"leaderboard_message_id={args.leaderboard_message_id}")
-        print(f"stats_message_id={args.stats_message_id}")
+        print_kv("leaderboard_adopted", "true")
+        print_kv("guild_id", args.guild_id)
+        print_kv("channel_id", args.leaderboard_channel_id)
+        print_kv("leaderboard_message_id", args.leaderboard_message_id)
+        print_kv("stats_message_id", args.stats_message_id)
         return
     if args.leaderboard_command == "status":
         guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
@@ -644,11 +767,11 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_field("Guild ID", guild_id)
         print_field("Registered Dom/mes", summary.domme_count)
         print_field("Tracked Sends", summary.send_count)
-        print_field("Tracked Total Cents", summary.total_cents)
-        print(f"guild_id={guild_id}")
-        print(f"registered_dommes={summary.domme_count}")
-        print(f"tracked_sends={summary.send_count}")
-        print(f"tracked_total_cents={summary.total_cents}")
+        print_field("Tracked Total", format_money_from_cents(summary.total_cents))
+        print_kv("guild_id", guild_id)
+        print_kv("registered_dommes", summary.domme_count)
+        print_kv("tracked_sends", summary.send_count)
+        print_kv("tracked_total_cents", summary.total_cents)
         return
     if args.leaderboard_command == "preview":
         guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
@@ -662,14 +785,20 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_header("Leaderboard Preview")
         print_field("Guild ID", guild_id)
         print_field("Rows", len(rows))
-        print(f"guild_id={guild_id}")
-        print("preview=top_dommes")
+        print_kv("guild_id", guild_id)
+        print_kv("preview", "top_dommes")
         if not rows:
-            print("rows=none")
+            print_line("No leaderboard rows found.")
+            print_kv("rows", "none")
             return
+        print_section("Top Dom/mes")
         for index, row in enumerate(rows, 1):
-            print(
-                f"{index}. user_id={row.user_id or 0} amount_cents={row.total_cents} send_count={row.send_count}"
+            label = f"<@{row.user_id}>" if row.user_id else row.label
+            print_line(
+                f"{index}. {label} — {format_money_from_cents(row.total_cents)} across {row.send_count} send(s)"
+            )
+            print_kv_raw(
+                f"row_{index}=user_id:{row.user_id or 0},amount_cents:{row.total_cents},send_count:{row.send_count}"
             )
         return
     if args.leaderboard_command == "diagnose":
@@ -681,27 +810,33 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
             owner_test_user_id=ctx.settings.throne_test_send_leaderboard_owner_user_id,
             limit=ctx.settings.leaderboard_limit,
         )
-        print("Leaderboard Diagnose")
-        print(f"Guild ID: {report.guild_id}")
-        print(f"Registered Dom/mes: {report.registered_dommes}")
-        print(f"Counted sends: {report.counted_sends}")
-        print(f"Excluded sends: {report.excluded_sends}")
-        print("Excluded reasons:")
-        print(f"- not posted: {report.excluded_not_posted}")
-        print(f"- private: {report.excluded_private}")
-        print(f"- test send excluded: {report.excluded_test_send}")
-        print(f"- domme_user_id missing/mismatch: {report.excluded_domme_mismatch}")
-        print(f"- guild mismatch: {report.excluded_guild_mismatch}")
-        print("Dom/me Rows:")
+        print_header("Leaderboard Diagnose")
+        print_field("Guild ID", report.guild_id)
+        print_field("Registered Dom/mes", report.registered_dommes)
+        print_field("Counted Sends", report.counted_sends)
+        print_field("Excluded Sends", report.excluded_sends)
+        print_section("Excluded Reasons")
+        print_line(f"- not posted: {report.excluded_not_posted}")
+        print_line(f"- private: {report.excluded_private}")
+        print_line(f"- test send excluded: {report.excluded_test_send}")
+        print_line(f"- domme_user_id missing/mismatch: {report.excluded_domme_mismatch}")
+        print_line(f"- guild mismatch: {report.excluded_guild_mismatch}")
+        print_section("Dom/me Rows")
         if not report.domme_rows:
-            print("(none)")
+            print_line("(none)")
         for row in report.domme_rows:
-            print(f"{row.label} total={row.total_cents} sends={row.send_count}")
-        print("Sends with no matching Dom/me:")
+            print_line(
+                f"{row.label} total={format_money_from_cents(row.total_cents)} sends={row.send_count}"
+            )
+        print_section("Sends with No Matching Dom/me")
         if not report.unmatched_sends:
-            print("(none)")
+            print_line("(none)")
         for send_id, domme_user_id, send_guild_id in report.unmatched_sends:
-            print(f"id={send_id} domme_user_id={domme_user_id} guild_id={send_guild_id}")
+            print_line(f"id={send_id} domme_user_id={domme_user_id} guild_id={send_guild_id}")
+        print_kv("guild_id", report.guild_id)
+        print_kv("registered_dommes", report.registered_dommes)
+        print_kv("counted_sends", report.counted_sends)
+        print_kv("excluded_sends", report.excluded_sends)
         return
     if args.leaderboard_command == "repair-send-dommes":
         guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
@@ -709,10 +844,15 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
             guild_id=guild_id,
             dry_run=bool(args.dry_run),
         )
-        print(f"guild_id={guild_id}")
-        print(f"dry_run={bool(args.dry_run)}")
-        print(f"candidates={candidates}")
-        print(f"updated={updated}")
+        print_header("Repair Send Dom/me Links")
+        print_field("Guild ID", guild_id)
+        print_field("Dry Run", bool(args.dry_run))
+        print_field("Candidates", candidates)
+        print_field("Updated", updated)
+        print_kv("guild_id", guild_id)
+        print_kv("dry_run", bool(args.dry_run))
+        print_kv("candidates", candidates)
+        print_kv("updated", updated)
         return
     raise RuntimeError(f"Unsupported leaderboard command: {args.leaderboard_command}")
 
@@ -725,19 +865,19 @@ async def handle_count(ctx: OperationsContext, args: argparse.Namespace) -> None
             print_header("Count Status")
             print_field("Guild ID", guild_id)
             print_field("State", "missing")
-            print(f"guild_id={guild_id}")
-            print("counting_state=missing")
+            print_kv("guild_id", guild_id)
+            print_kv("counting_state", "missing")
             return
         print_header("Count Status")
         print_field("Guild ID", guild_id)
         print_field("Enabled", state.is_enabled)
         print_field("Channel ID", state.channel_id or 0)
         print_field("Current Number", state.current_number)
-        print(f"guild_id={guild_id}")
-        print(f"enabled={state.is_enabled}")
-        print(f"channel_id={state.channel_id or 0}")
-        print(f"current_number={state.current_number}")
-        print(f"last_user_id={state.last_user_id or 0}")
+        print_kv("guild_id", guild_id)
+        print_kv("enabled", state.is_enabled)
+        print_kv("channel_id", state.channel_id or 0)
+        print_kv("current_number", state.current_number)
+        print_kv("last_user_id", state.last_user_id or 0)
         return
     if args.count_command == "set":
         existing = await ctx.counting.get(guild_id)
@@ -754,8 +894,8 @@ async def handle_count(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_header("Count Set")
         print_field("Guild ID", guild_id)
         print_field("Current Number", max(0, int(args.number)))
-        print(f"guild_id={guild_id}")
-        print(f"current_number={max(0, int(args.number))}")
+        print_kv("guild_id", guild_id)
+        print_kv("current_number", max(0, int(args.number)))
         return
     raise RuntimeError(f"Unsupported count command: {args.count_command}")
 
@@ -765,9 +905,10 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_header("Throne Refresh")
         print_field("Tracking Mode", "webhook_only")
         print_field("Legacy Polling", "disabled")
-        print("tracking_mode=webhook_only")
-        print("legacy_polling=disabled")
-        print("action=Use Throne webhook integrations and run a test webhook.")
+        print_line("Use Throne webhook integrations and run a test webhook.")
+        print_kv("tracking_mode", "webhook_only")
+        print_kv("legacy_polling", "disabled")
+        print_kv("action", "Use Throne webhook integrations and run a test webhook.")
         return
 
     if args.throne_command == "status":
@@ -780,24 +921,38 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
                 print_field("Guild ID", guild_id)
                 print_field("Handle", f"@{handle}")
                 print_field("Found", "false")
-                print(f"guild_id={guild_id}")
-                print(f"handle=@{handle}")
-                print("found=false")
+                print_kv("guild_id", guild_id)
+                print_kv("handle", f"@{handle}")
+                print_kv("found", "false")
                 return
             print_header("Throne Status")
             print_field("Guild ID", guild_id)
             print_field("Handle", f"@{creator.throne_handle}")
             print_field("Found", "true")
             print_field("Creator ID", creator.throne_creator_id)
-            print(f"guild_id={guild_id}")
-            print(f"handle=@{creator.throne_handle}")
-            print("found=true")
-            print(f"creator_id={creator.throne_creator_id}")
-            print(f"discord_user_id={creator.discord_user_id}")
-            print(f"tracking_mode={creator.tracking_mode}")
-            print(f"webhook_connected_at={creator.webhook_connected_at or ''}")
-            print(f"last_successful_event_at={creator.last_successful_event_at or ''}")
-            print(f"setup_verified_at={creator.setup_verified_at or ''}")
+            print_field("Discord User ID", creator.discord_user_id)
+            print_field("Tracking Mode", creator.tracking_mode)
+            print_field("Webhook Connected", format_optional_datetime(creator.webhook_connected_at))
+            print_field("Last Successful Event", format_optional_datetime(creator.last_successful_event_at))
+            print_field("Setup Verified", format_optional_datetime(creator.setup_verified_at))
+            print_kv("guild_id", guild_id)
+            print_kv("handle", f"@{creator.throne_handle}")
+            print_kv("found", "true")
+            print_kv("creator_id", creator.throne_creator_id)
+            print_kv("discord_user_id", creator.discord_user_id)
+            print_kv("tracking_mode", creator.tracking_mode)
+            print_kv(
+                "webhook_connected_at",
+                creator.webhook_connected_at.isoformat() if creator.webhook_connected_at else "",
+            )
+            print_kv(
+                "last_successful_event_at",
+                creator.last_successful_event_at.isoformat() if creator.last_successful_event_at else "",
+            )
+            print_kv(
+                "setup_verified_at",
+                creator.setup_verified_at.isoformat() if creator.setup_verified_at else "",
+            )
             return
 
         creators = await ctx.throne_creators.list_for_guild(guild_id)
@@ -806,9 +961,9 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_field("Guild ID", guild_id)
         print_field("Registered Creators", len(creators))
         print_field("Setup Verified", setup_verified)
-        print(f"guild_id={guild_id}")
-        print(f"registered_creators={len(creators)}")
-        print(f"setup_verified={setup_verified}")
+        print_kv("guild_id", guild_id)
+        print_kv("registered_creators", len(creators))
+        print_kv("setup_verified", setup_verified)
         return
 
     if args.throne_command in {"dommes", "list"}:
@@ -817,13 +972,25 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_header("Throne Dom/mes")
         print_field("Guild ID", guild_id)
         print_field("Rows", len(creators))
-        print(f"guild_id={guild_id}")
-        print(f"rows={len(creators)}")
-        for row in creators:
-            print(
+        print_kv("guild_id", guild_id)
+        print_kv("rows", len(creators))
+        if not creators:
+            print_line("No registered Throne creators found.")
+            return
+        print_section("Creators")
+        for index, row in enumerate(creators, 1):
+            print_line(
+                f"{index}. @{row.throne_handle} — user_id={row.discord_user_id} mode={row.tracking_mode}"
+            )
+            print_kv_raw(
                 f"handle=@{row.throne_handle} creator_id={row.throne_creator_id} "
                 f"discord_user_id={row.discord_user_id} mode={row.tracking_mode} "
-                f"last_successful_event_at={row.last_successful_event_at or ''}"
+                f"last_successful_event_at={row.last_successful_event_at.isoformat() if row.last_successful_event_at else ''}"
+            )
+            print_kv_raw(
+                f"creator_{index}=handle:@{row.throne_handle},creator_id:{row.throne_creator_id},"
+                f"discord_user_id:{row.discord_user_id},mode:{row.tracking_mode},"
+                f"last_successful_event_at:{row.last_successful_event_at.isoformat() if row.last_successful_event_at else ''}"
             )
         return
 
@@ -838,9 +1005,9 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
             print_field("Guild ID", guild_id)
             print_field("User ID", user_id)
             print_field("Found", "false")
-            print(f"guild_id={guild_id}")
-            print(f"user_id={user_id}")
-            print("found=false")
+            print_kv("guild_id", guild_id)
+            print_kv("user_id", user_id)
+            print_kv("found", "false")
             return
         latest_sends = await ctx.sends.list_sends_for_domme(guild_id, user_id, limit=1)
         latest = latest_sends[0] if latest_sends else None
@@ -849,22 +1016,35 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_field("User ID", user_id)
         print_field("Found", "true")
         print_field("Creator ID", creator.throne_creator_id)
-        print(f"guild_id={guild_id}")
-        print(f"user_id={user_id}")
-        print("found=true")
-        print(f"handle=@{creator.throne_handle}")
-        print(f"creator_id={creator.throne_creator_id}")
-        print(f"tracking_mode={creator.tracking_mode}")
-        print(f"webhook_connected_at={creator.webhook_connected_at or ''}")
-        print(f"last_successful_event_at={creator.last_successful_event_at or ''}")
-        print(f"setup_verified_at={creator.setup_verified_at or ''}")
+        print_field("Handle", f"@{creator.throne_handle}")
+        print_field("Tracking Mode", creator.tracking_mode)
+        print_kv("guild_id", guild_id)
+        print_kv("user_id", user_id)
+        print_kv("found", "true")
+        print_kv("handle", f"@{creator.throne_handle}")
+        print_kv("creator_id", creator.throne_creator_id)
+        print_kv("tracking_mode", creator.tracking_mode)
+        print_kv(
+            "webhook_connected_at",
+            creator.webhook_connected_at.isoformat() if creator.webhook_connected_at else "",
+        )
+        print_kv(
+            "last_successful_event_at",
+            creator.last_successful_event_at.isoformat() if creator.last_successful_event_at else "",
+        )
+        print_kv(
+            "setup_verified_at",
+            creator.setup_verified_at.isoformat() if creator.setup_verified_at else "",
+        )
         if latest is not None:
-            print(f"latest_send_id={latest.id}")
-            print(f"latest_send_amount_cents={latest.amount_cents}")
-            print(f"latest_send_sub_name={latest.sub_name or ''}")
-            print(f"latest_send_at={latest.sent_at.isoformat()}")
+            print_field("Latest Send", format_money_from_cents(latest.amount_cents))
+            print_kv("latest_send_id", latest.id)
+            print_kv("latest_send_amount_cents", latest.amount_cents)
+            print_kv("latest_send_sub_name", latest.sub_name or "")
+            print_kv("latest_send_at", latest.sent_at.isoformat())
         else:
-            print("latest_send_id=0")
+            print_field("Latest Send", "(none)")
+            print_kv("latest_send_id", 0)
         return
 
     if args.throne_command == "webhook":
@@ -881,9 +1061,9 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
             print_field("Guild ID", guild_id)
             print_field("User ID", user_id)
             print_field("Found", "false")
-            print(f"guild_id={guild_id}")
-            print(f"user_id={user_id}")
-            print("found=false")
+            print_kv("guild_id", guild_id)
+            print_kv("user_id", user_id)
+            print_kv("found", "false")
             return
         new_secret = secrets.token_urlsafe(32)
         updated = await ctx.throne_creators.upsert_for_user(
@@ -901,16 +1081,19 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_field("Guild ID", guild_id)
         print_field("User ID", user_id)
         print_field("Rotated", "true")
-        print(f"guild_id={guild_id}")
-        print(f"user_id={user_id}")
-        print("found=true")
-        print("rotated=true")
-        print(f"creator_id={updated.throne_creator_id}")
+        print_kv("guild_id", guild_id)
+        print_kv("user_id", user_id)
+        print_kv("found", "true")
+        print_kv("rotated", "true")
+        print_kv("creator_id", updated.throne_creator_id)
         base = (os.getenv("THRONE_WEBHOOK_BASE_URL") or "").strip().rstrip("/")
         if base:
-            print(f"webhook_url={base}/throne/webhook/{updated.throne_creator_id}/{new_secret}")
+            webhook_url = f"{base}/throne/webhook/{updated.throne_creator_id}/{new_secret}"
+            print_field("Webhook URL", webhook_url)
+            print_kv("webhook_url", webhook_url)
         else:
-            print("webhook_url=")
+            print_field("Webhook URL", "(not configured)")
+            print_kv("webhook_url", "")
         return
 
     if args.throne_command == "addsend":
@@ -935,15 +1118,16 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         if send is None:
             print_header("Throne Add Send")
             print_field("Recorded", "false")
-            print("recorded=false")
+            print_kv("recorded", "false")
             return
         print_header("Throne Add Send")
         print_field("Recorded", "true")
         print_field("Public Send ID", send.public_send_id)
-        print("recorded=true")
-        print(f"send_id={send.id}")
-        print(f"public_send_id={send.public_send_id}")
-        print(f"status={send.discord_post_status}")
+        print_field("Status", send.discord_post_status)
+        print_kv("recorded", "true")
+        print_kv("send_id", send.id)
+        print_kv("public_send_id", send.public_send_id)
+        print_kv("status", send.discord_post_status)
         return
 
     if args.throne_command == "addsub":
@@ -963,10 +1147,10 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_field("Guild ID", guild_id)
         print_field("User ID", sub.discord_user_id)
         print_field("Send Name", sub.send_name)
-        print(f"guild_id={guild_id}")
-        print(f"user_id={sub.discord_user_id}")
-        print(f"sub_id={sub.id}")
-        print(f"send_name={sub.send_name}")
+        print_kv("guild_id", guild_id)
+        print_kv("user_id", sub.discord_user_id)
+        print_kv("sub_id", sub.id)
+        print_kv("send_name", sub.send_name)
         return
 
     if args.throne_command == "adddomme":
@@ -983,13 +1167,17 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_field("Guild ID", guild_id)
         print_field("User ID", user_id)
         print_field("Creator ID", result.creator.throne_creator_id)
-        print(f"guild_id={guild_id}")
-        print(f"user_id={user_id}")
-        print(f"domme_id={result.domme.id}")
-        print(f"throne_handle=@{result.creator.throne_handle}")
-        print(f"creator_id={result.creator.throne_creator_id}")
-        print(f"tracking_mode={result.creator.tracking_mode}")
-        print(f"webhook_url={result.webhook_url or ''}")
+        print_field("Handle", f"@{result.creator.throne_handle}")
+        print_field("Tracking Mode", result.creator.tracking_mode)
+        if result.webhook_url:
+            print_field("Webhook URL", result.webhook_url)
+        print_kv("guild_id", guild_id)
+        print_kv("user_id", user_id)
+        print_kv("domme_id", result.domme.id)
+        print_kv("throne_handle", f"@{result.creator.throne_handle}")
+        print_kv("creator_id", result.creator.throne_creator_id)
+        print_kv("tracking_mode", result.creator.tracking_mode)
+        print_kv("webhook_url", result.webhook_url or "")
         return
 
     if args.throne_command == "subs":
@@ -998,12 +1186,17 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_header("Throne Subs")
         print_field("Guild ID", guild_id)
         print_field("Rows", len(subs))
-        print(f"guild_id={guild_id}")
-        print(f"rows={len(subs)}")
-        for row in subs:
-            print(
-                f"discord_user_id={row.discord_user_id} send_name={row.send_name} "
-                f"registered_at={row.registered_at.isoformat()}"
+        print_kv("guild_id", guild_id)
+        print_kv("rows", len(subs))
+        if not subs:
+            print_line("No registered Subs found.")
+            return
+        print_section("Subs")
+        for index, row in enumerate(subs, 1):
+            print_line(f"{index}. {row.send_name} — user_id={row.discord_user_id}")
+            print_kv_raw(
+                f"sub_{index}=discord_user_id:{row.discord_user_id},send_name:{row.send_name},"
+                f"registered_at:{row.registered_at.isoformat()}"
             )
         return
     if args.throne_command == "invalidate-test-sends":
@@ -1012,8 +1205,8 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_header("Invalidate Test Sends")
         print_field("Updated", updated)
         print_field("Usernames", ",".join(usernames))
-        print(f"updated={updated}")
-        print(f"usernames={','.join(usernames)}")
+        print_kv("updated", updated)
+        print_kv("usernames", ",".join(usernames))
         return
     raise RuntimeError(f"Unsupported throne command: {args.throne_command}")
 
@@ -1029,24 +1222,24 @@ async def handle_inactivity(ctx: OperationsContext, args: argparse.Namespace) ->
         print_header("Inactivity Status")
         print_field("Guild ID", guild_id)
         print_field("Enabled", "true" if enabled else "false")
-        print(f"guild_id={guild_id}")
-        print(f"enabled={'true' if enabled else 'false'}")
+        print_kv("guild_id", guild_id)
+        print_kv("enabled", "true" if enabled else "false")
         return
     if args.inactivity_command == "on":
         await ctx.bot_state.set_value(key, "true")
         print_header("Inactivity")
         print_field("Guild ID", guild_id)
         print_field("Enabled", "true")
-        print(f"guild_id={guild_id}")
-        print("enabled=true")
+        print_kv("guild_id", guild_id)
+        print_kv("enabled", "true")
         return
     if args.inactivity_command == "off":
         await ctx.bot_state.set_value(key, "false")
         print_header("Inactivity")
         print_field("Guild ID", guild_id)
         print_field("Enabled", "false")
-        print(f"guild_id={guild_id}")
-        print("enabled=false")
+        print_kv("guild_id", guild_id)
+        print_kv("enabled", "false")
         return
     raise RuntimeError(f"Unsupported inactivity command: {args.inactivity_command}")
 
@@ -1058,21 +1251,34 @@ async def handle_blacklist(ctx: OperationsContext, args: argparse.Namespace) -> 
             reason=(args.reason or "manual").strip() or "manual",
             created_by=args.created_by,
         )
-        print(f"discord_user_id={int(args.discord_user_id)}")
-        print("updated=1")
+        print_header("Blacklist Updated")
+        print_field("Action", "added")
+        print_field("Discord User ID", int(args.discord_user_id))
+        print_kv("discord_user_id", int(args.discord_user_id))
+        print_kv("updated", 1)
         return
     if args.blacklist_command == "remove":
         await ctx.blacklist.remove(int(args.discord_user_id))
-        print(f"discord_user_id={int(args.discord_user_id)}")
-        print("updated=1")
+        print_header("Blacklist Updated")
+        print_field("Action", "removed")
+        print_field("Discord User ID", int(args.discord_user_id))
+        print_kv("discord_user_id", int(args.discord_user_id))
+        print_kv("updated", 1)
         return
     if args.blacklist_command == "list":
         rows = await ctx.blacklist.list_entries(limit=max(1, int(args.limit)))
-        print(f"rows={len(rows)}")
-        for user_id, reason, created_by, created_at in rows:
-            print(
-                f"discord_user_id={user_id} reason={reason or ''} "
-                f"created_by={created_by or 0} created_at={created_at.isoformat()}"
+        print_header("Blacklist")
+        print_field("Rows", len(rows))
+        print_kv("rows", len(rows))
+        if not rows:
+            print_line("No blacklist entries found.")
+            return
+        print_section("Entries")
+        for index, (user_id, reason, created_by, created_at) in enumerate(rows, 1):
+            print_line(f"{index}. user_id={user_id} reason={reason or '(none)'}")
+            print_kv_raw(
+                f"entry_{index}=discord_user_id:{user_id},reason:{reason or ''},"
+                f"created_by:{created_by or 0},created_at:{created_at.isoformat()}"
             )
         return
     raise RuntimeError(f"Unsupported blacklist command: {args.blacklist_command}")
@@ -1095,29 +1301,37 @@ async def handle_sends(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Status", args.status)
         print_field("Guild ID", guild_id if guild_id is not None else "all")
         print_field("Rows", len(rows))
-        print(f"status={args.status}")
-        print(f"guild_id={guild_id if guild_id is not None else 'all'}")
-        print(f"rows={len(rows)}")
-        for send in rows:
-            print(
-                f"id={send.id} guild_id={send.guild_id} domme_user_id={send.domme_user_id} "
-                f"sub_user_id={send.sub_user_id or 0} amount_cents={send.amount_cents} "
-                f"status={send.discord_post_status} is_private={send.is_private} is_test_send={send.is_test_send}"
+        print_kv("status", args.status)
+        print_kv("guild_id", guild_id if guild_id is not None else "all")
+        print_kv("rows", len(rows))
+        if not rows:
+            print_line("No sends matched the current filter.")
+            return
+        print_section("Sends")
+        for index, send in enumerate(rows, 1):
+            print_line(
+                f"{index}. {send.public_send_id} — {format_money_with_currency_name(send.amount_cents, send.currency)} "
+                f"status={send.discord_post_status} domme_user_id={send.domme_user_id}"
+            )
+            print_kv_raw(
+                f"send_{index}=id:{send.id},guild_id:{send.guild_id},domme_user_id:{send.domme_user_id},"
+                f"sub_user_id:{send.sub_user_id or 0},amount_cents:{send.amount_cents},status:{send.discord_post_status},"
+                f"is_private:{send.is_private},is_test_send:{send.is_test_send}"
             )
         return
     if args.sends_command == "backfill-public-ids":
         updated = await ctx.sends.backfill_public_send_ids()
         print_header("Backfill Public Send IDs")
         print_field("Updated", updated)
-        print(f"updated={updated}")
+        print_kv("updated", updated)
         return
     if args.sends_command == "mark-posted":
         updated = await ctx.sends.force_mark_posted(args.send_id)
         print_header("Mark Send Posted")
         print_field("Send ID", args.send_id)
         print_field("Updated", updated)
-        print(f"send_id={args.send_id}")
-        print(f"updated={updated}")
+        print_kv("send_id", args.send_id)
+        print_kv("updated", updated)
         return
     raise RuntimeError(f"Unsupported sends command: {args.sends_command}")
 
@@ -1133,21 +1347,23 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Guild Name", live.guild_name or "(unknown)")
         print_field("Live Text Channels", len(live.channels))
         print_field("Live Roles", len(live.roles))
-        print(f"guild_id={guild_id}")
-        print(f"guild_name={live.guild_name or ''}")
-        print(f"live_text_channels={len(live.channels)}")
-        print(f"live_roles={len(live.roles)}")
+        print_field("Live Source", live.source)
+        print_kv("guild_id", guild_id)
+        print_kv("guild_name", live.guild_name or "")
+        print_kv("live_text_channels", len(live.channels))
+        print_kv("live_roles", len(live.roles))
+        print_kv("live_source", live.source)
 
         if live.error:
             print_field("Live Scan", live.error)
-            print(f"live_scan_error={live.error}")
+            print_kv("live_scan_error", live.error)
 
         configured_channel_ids = {
             field_name: getattr(settings, field_name, None) if settings is not None else None
             for field_name in GUILD_CHANNEL_FIELDS
         }
         channel_lookup = {channel.channel_id: channel for channel in live.channels}
-        print("Channels:")
+        print_section("Channels")
 
         for field_name in GUILD_CHANNEL_FIELDS:
             label = GUILD_CHANNEL_LABELS[field_name]
@@ -1161,25 +1377,25 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
             elif configured_id is not None:
                 status = "configured_missing"
 
-            print(f"{field_name}={configured_id or ''}")
-            print(f"{field_name}_status={status}")
+            print_kv(field_name, configured_id or "")
+            print_kv(f"{field_name}_status", status)
             if suggested_channel is not None:
-                print(f"{field_name}_suggested={suggested_channel.channel_id}")
+                print_kv(f"{field_name}_suggested", suggested_channel.channel_id)
 
-            print(f"{label}:")
+            print_line(f"{label}:")
             if configured_id is None:
-                print("  current: (not set)")
+                print_line("  current: (not set)")
             elif configured_channel is None:
-                print(f"  current: {configured_id} (not found in live guild scan)")
+                print_line(f"  current: {configured_id} (not found in live guild scan)")
             else:
-                print(f"  current: #{configured_channel.name} ({configured_channel.channel_id})")
+                print_line(f"  current: #{configured_channel.name} ({configured_channel.channel_id})")
 
             if suggested_channel is None:
-                print("  suggested: (no obvious match found)")
+                print_line("  suggested: (no obvious match found)")
             else:
-                print(f"  suggested: #{suggested_channel.name} ({suggested_channel.channel_id})")
+                print_line(f"  suggested: #{suggested_channel.name} ({suggested_channel.channel_id})")
                 if configured_id != suggested_channel.channel_id or configured_channel is None:
-                    print(
+                    print_line(
                         "  command: "
                         f"rob guild set-channel --guild-id {guild_id} --field {field_name} --channel-id {suggested_channel.channel_id}"
                     )
@@ -1189,7 +1405,7 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
             for field_name in GUILD_ROLE_FIELDS
         }
         role_lookup = {role.role_id: role for role in live.roles}
-        print("Roles:")
+        print_section("Roles")
 
         for field_name in GUILD_ROLE_FIELDS:
             label = GUILD_ROLE_LABELS[field_name]
@@ -1203,25 +1419,25 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
             elif configured_id is not None:
                 status = "configured_missing"
 
-            print(f"{field_name}={configured_id or ''}")
-            print(f"{field_name}_status={status}")
+            print_kv(field_name, configured_id or "")
+            print_kv(f"{field_name}_status", status)
             if suggested_role is not None:
-                print(f"{field_name}_suggested={suggested_role.role_id}")
+                print_kv(f"{field_name}_suggested", suggested_role.role_id)
 
-            print(f"{label}:")
+            print_line(f"{label}:")
             if configured_id is None:
-                print("  current: (not set)")
+                print_line("  current: (not set)")
             elif configured_role is None:
-                print(f"  current: {configured_id} (not found in live guild scan)")
+                print_line(f"  current: {configured_id} (not found in live guild scan)")
             else:
-                print(f"  current: @{configured_role.name} ({configured_role.role_id})")
+                print_line(f"  current: @{configured_role.name} ({configured_role.role_id})")
 
             if suggested_role is None:
-                print("  suggested: (no obvious match found)")
+                print_line("  suggested: (no obvious match found)")
             else:
-                print(f"  suggested: @{suggested_role.name} ({suggested_role.role_id})")
+                print_line(f"  suggested: @{suggested_role.name} ({suggested_role.role_id})")
                 if configured_id != suggested_role.role_id or configured_role is None:
-                    print(
+                    print_line(
                         "  command: "
                         f"rob guild set-role --guild-id {guild_id} --field {field_name} --role-id {suggested_role.role_id}"
                     )
@@ -1234,10 +1450,10 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Guild ID", guild_id)
         print_field("Field", args.field)
         print_field("Channel ID", channel_id if channel_id is not None else "(cleared)")
-        print("updated=true")
-        print(f"guild_id={guild_id}")
-        print(f"field={args.field}")
-        print(f"channel_id={getattr(updated, args.field) or 0}")
+        print_kv("updated", "true")
+        print_kv("guild_id", guild_id)
+        print_kv("field", args.field)
+        print_kv("channel_id", getattr(updated, args.field) or 0)
         return
 
     if args.guild_command == "set-role":
@@ -1247,10 +1463,10 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Guild ID", guild_id)
         print_field("Field", args.field)
         print_field("Role ID", role_id if role_id is not None else "(cleared)")
-        print("updated=true")
-        print(f"guild_id={guild_id}")
-        print(f"field={args.field}")
-        print(f"role_id={getattr(updated, args.field) or 0}")
+        print_kv("updated", "true")
+        print_kv("guild_id", guild_id)
+        print_kv("field", args.field)
+        print_kv("role_id", getattr(updated, args.field) or 0)
         return
 
     raise RuntimeError(f"Unsupported guild command: {args.guild_command}")
@@ -1259,6 +1475,7 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
 async def main_async() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    set_output_mode(args.output)
     ctx = await create_context()
     try:
         if args.command == "status":
