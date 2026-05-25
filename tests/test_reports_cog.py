@@ -121,7 +121,6 @@ def test_report_modal_upload_is_forwarded_when_present():
         url = "https://example.test/screenshot.png"
 
         async def to_file(self, **_kwargs):
-        async def to_file(self):
             return object()
 
     asyncio.run(

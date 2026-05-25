@@ -5,11 +5,33 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_ROB="${APP_ROOT}/scripts/rob"
 SOURCE_ROBCTL="${APP_ROOT}/scripts/robctl"
-TARGET_BIN_DIR="${HOME}/.local/bin"
-TARGET_ROB="${TARGET_BIN_DIR}/rob"
-TARGET_ROBCTL="${TARGET_BIN_DIR}/robctl"
 MARKER_START="# >>> rob global command >>>"
 MARKER_END="# <<< rob global command <<<"
+
+resolve_target_bin_dir() {
+  if [[ -n "${TARGET_BIN_DIR:-}" ]]; then
+    printf '%s\n' "${TARGET_BIN_DIR}"
+    return
+  fi
+
+  if [[ -d "/usr/local/bin" && -w "/usr/local/bin" ]]; then
+    printf '%s\n' "/usr/local/bin"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 \
+    && sudo -n test -d /usr/local/bin 2>/dev/null \
+    && sudo -n test -w /usr/local/bin 2>/dev/null; then
+    printf '%s\n' "/usr/local/bin"
+    return
+  fi
+
+  printf '%s\n' "${HOME}/.local/bin"
+}
+
+TARGET_BIN_DIR="$(resolve_target_bin_dir)"
+TARGET_ROB="${TARGET_BIN_DIR}/rob"
+TARGET_ROBCTL="${TARGET_BIN_DIR}/robctl"
 
 ensure_executable() {
   local file="$1"
@@ -21,35 +43,61 @@ ensure_executable() {
 ensure_executable "${SOURCE_ROB}"
 ensure_executable "${SOURCE_ROBCTL}"
 
-mkdir -p "${TARGET_BIN_DIR}"
-ln -sf "${SOURCE_ROB}" "${TARGET_ROB}"
-ln -sf "${SOURCE_ROBCTL}" "${TARGET_ROBCTL}"
+ensure_target_dir() {
+  if [[ -d "${TARGET_BIN_DIR}" ]]; then
+    return
+  fi
+  if [[ "${TARGET_BIN_DIR}" == "/usr/local/bin" ]] && command -v sudo >/dev/null 2>&1; then
+    sudo mkdir -p "${TARGET_BIN_DIR}"
+    return
+  fi
+  mkdir -p "${TARGET_BIN_DIR}"
+}
+
+install_link() {
+  local source_file="$1"
+  local target_file="$2"
+  if [[ "${TARGET_BIN_DIR}" == "/usr/local/bin" ]] && command -v sudo >/dev/null 2>&1 && [[ ! -w "${TARGET_BIN_DIR}" ]]; then
+    sudo ln -sf "${source_file}" "${target_file}"
+    return
+  fi
+  ln -sf "${source_file}" "${target_file}"
+}
+
+ensure_target_dir
+install_link "${SOURCE_ROB}" "${TARGET_ROB}"
+install_link "${SOURCE_ROBCTL}" "${TARGET_ROBCTL}"
 
 append_shell_block() {
   local rc_file="$1"
   [[ -f "${rc_file}" ]] || touch "${rc_file}"
+  local tmp_file
+  tmp_file="$(mktemp)"
+  awk -v start="${MARKER_START}" -v end="${MARKER_END}" '
+    $0 == start {skip=1; next}
+    $0 == end {skip=0; next}
+    skip != 1 {print}
+  ' "${rc_file}" > "${tmp_file}"
+  mv "${tmp_file}" "${rc_file}"
 
-  if grep -q "${MARKER_START}" "${rc_file}"; then
-    return
-  fi
-
-  cat >> "${rc_file}" <<'EOF'
-# >>> rob global command >>>
-if [ -d "$HOME/.local/bin" ]; then
-  case ":$PATH:" in
-    *":$HOME/.local/bin:"*) ;;
-    *) export PATH="$HOME/.local/bin:$PATH" ;;
+  cat >> "${rc_file}" <<EOF
+${MARKER_START}
+ROB_GLOBAL_BIN="${TARGET_BIN_DIR}"
+if [ -d "\${ROB_GLOBAL_BIN}" ]; then
+  case ":\$PATH:" in
+    *":\${ROB_GLOBAL_BIN}:"*) ;;
+    *) export PATH="\${ROB_GLOBAL_BIN}:\$PATH" ;;
   esac
 fi
 
 rob() {
-  "$HOME/.local/bin/rob" "$@"
+  "\${ROB_GLOBAL_BIN}/rob" "\$@"
 }
 
 robctl() {
-  "$HOME/.local/bin/rob" "$@"
+  "\${ROB_GLOBAL_BIN}/rob" "\$@"
 }
-# <<< rob global command <<<
+${MARKER_END}
 EOF
 }
 
@@ -71,8 +119,11 @@ Added shell functions to:
   ${HOME}/.zprofile
   ${HOME}/.profile
 
+Primary install target:
+  ${TARGET_BIN_DIR}
+
 Restart your shell or run:
-  export PATH="\$HOME/.local/bin:\$PATH"
+  export PATH="${TARGET_BIN_DIR}:\$PATH"
   source "${HOME}/.bashrc" 2>/dev/null || true
   source "${HOME}/.bash_profile" 2>/dev/null || true
   source "${HOME}/.zshrc" 2>/dev/null || true

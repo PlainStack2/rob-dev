@@ -52,6 +52,18 @@ rob sends backfill-public-ids
 rob throne invalidate-test-sends
 ```
 
+## Guild Channel Config Audit
+
+```bash
+rob guild scan --guild-id <guild_id>
+rob guild set-channel --guild-id <guild_id> --field leaderboard_channel_id --channel-id <channel_id>
+rob guild set-channel --guild-id <guild_id> --field report_channel_id --clear
+rob guild set-role --guild-id <guild_id> --field domme_role_id --role-id <role_id>
+rob guild set-role --guild-id <guild_id> --field inactive_role_id --clear
+```
+
+`rob guild scan` prints the current DB values, checks whether the configured channels and roles still exist in Discord, and suggests exact `rob guild set-channel ...` and `rob guild set-role ...` commands for missing fields.
+
 ## Throne Registration Audit
 
 ```bash

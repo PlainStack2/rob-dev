@@ -15,6 +15,7 @@ That installer:
 - creates `/opt/rob-webhook/deploy-webhook-dev.sh`
 - installs the deploy sudoers entry
 - writes a webhook-only `.env` template if one does not already exist
+- installs or refreshes the global `rob` command
 - runs migrations + DB checks before first service start (when real env values exist)
 
 ## Target
@@ -34,8 +35,9 @@ Use these steps if you are doing the install manually instead of the bootstrap s
 4. Create `.venv` and install `requirements.txt`.
 5. Copy `deploy/systemd/rob-webhook-dev.service` to `/etc/systemd/system/rob-webhook-dev.service`.
 6. Copy or symlink `deploy/scripts/deploy-webhook-dev.sh` to `/opt/rob-webhook/deploy-webhook-dev.sh`.
-7. Enable the service with `sudo systemctl enable --now rob-webhook-dev.service`.
-8. Verify `curl http://127.0.0.1:8080/health` returns `OK`.
+7. Run `scripts/install-rob-global.sh` if you want the `rob` command immediately before the first deploy.
+8. Enable the service with `sudo systemctl enable --now rob-webhook-dev.service`.
+9. Verify `curl http://127.0.0.1:8080/health` returns `OK`.
 
 ## Signature mode for dev
 
@@ -69,3 +71,4 @@ Add these secrets:
 - runs on `push` to `main` when webhook/shared runtime files change
 - supports manual `workflow_dispatch` with optional `deploy_ref` override
 - deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)
+- refreshes the global `rob` command on the target host during each deploy

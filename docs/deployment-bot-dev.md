@@ -15,6 +15,7 @@ That installer:
 - creates `/opt/rob-bot/deploy-bot-dev.sh`
 - installs the deploy sudoers entry
 - writes a bot `.env` template if one does not already exist
+- installs or refreshes the global `rob` command
 - runs migrations + DB checks before first service start (when real env values exist)
 
 ## Target
@@ -32,8 +33,9 @@ Use these steps if you are doing the install manually instead of the bootstrap s
 4. Create `.venv` and install `requirements.txt`.
 5. Copy `deploy/systemd/rob-bot-dev.service` to `/etc/systemd/system/rob-bot-dev.service`.
 6. Copy or symlink `deploy/scripts/deploy-bot-dev.sh` to `/opt/rob-bot/deploy-bot-dev.sh`.
-7. Enable the service with `sudo systemctl enable --now rob-bot-dev.service`.
-8. Verify startup with `PYTHONPATH=. python -m apps.bot.main`.
+7. Run `scripts/install-rob-global.sh` if you want the `rob` command immediately before the first deploy.
+8. Enable the service with `sudo systemctl enable --now rob-bot-dev.service`.
+9. Verify startup with `PYTHONPATH=. python -m apps.bot.main`.
 
 ## Passwordless sudo for deploy user
 
@@ -60,3 +62,4 @@ Add these secrets:
 - runs on `push` to `main` when bot/shared runtime files change
 - supports manual `workflow_dispatch` with optional `deploy_ref` override
 - deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)
+- refreshes the global `rob` command on the target host during each deploy
