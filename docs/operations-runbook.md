@@ -10,8 +10,6 @@ scripts/install-rob-global.sh
 
 After this, `rob` is available globally from shell sessions. `robctl` still works as a compatibility alias.
 
-Use `rob --output kv ...` when you want shell-friendly key/value output. The default output is operator-focused and easier to read in a terminal session.
-
 ## Health + Service Checks
 
 ```bash

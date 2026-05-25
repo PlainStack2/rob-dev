@@ -10,13 +10,6 @@ scripts/install-rob-global.sh
 
 The installer prefers a real system-wide binary link in `/usr/local/bin` when it has permission, and otherwise falls back to `~/.local/bin`.
 
-`rob` defaults to human-friendly operator output. For script-friendly key/value output, put the mode flag before the command:
-
-```bash
-rob --output kv status
-rob --output both guild scan --guild-id 123
-```
-
 ## Supported commands
 
 ```bash

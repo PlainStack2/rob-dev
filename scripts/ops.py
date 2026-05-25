@@ -7,7 +7,6 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
 
 import aiohttp
 import discord
@@ -108,18 +107,8 @@ class LiveGuildScanResult:
     error: str | None = None
 
 
-OutputMode = Literal["pretty", "kv", "both"]
-OUTPUT_MODE: OutputMode = "both"
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Rob backend operations.")
-    parser.add_argument(
-        "--output",
-        choices=("pretty", "kv", "both"),
-        default=os.getenv("ROB_OUTPUT_MODE", "pretty"),
-        help="Output mode. pretty is default for operators, kv is script-friendly, both includes both views.",
-    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("status", help="Show database, maintenance, and queue status.")
@@ -402,47 +391,28 @@ def parse_user_ref(value: str) -> int | None:
     return None
 
 
-def set_output_mode(mode: OutputMode) -> None:
-    global OUTPUT_MODE
-    OUTPUT_MODE = mode
-
-
-def _show_pretty() -> bool:
-    return OUTPUT_MODE in {"pretty", "both"}
-
-
-def _show_kv() -> bool:
-    return OUTPUT_MODE in {"kv", "both"}
-
-
 def print_header(title: str) -> None:
-    if _show_pretty():
-        print(f"Rob Control | {title}")
+    print(f"Rob Control | {title}")
 
 
 def print_field(label: str, value: object) -> None:
-    if _show_pretty():
-        print(f"- {label}: {value}")
+    print(f"- {label}: {value}")
 
 
 def print_section(title: str) -> None:
-    if _show_pretty():
-        print(f"{title}:")
+    print(f"{title}:")
 
 
 def print_line(text: str = "") -> None:
-    if _show_pretty():
-        print(text)
+    print(text)
 
 
-def print_kv(key: str, value: object) -> None:
-    if _show_kv():
-        print(f"{key}={value}")
+def print_kv(_key: str, _value: object) -> None:
+    return
 
 
-def print_kv_raw(text: str) -> None:
-    if _show_kv():
-        print(text)
+def print_kv_raw(_text: str) -> None:
+    return
 
 
 def format_optional_datetime(value: datetime | None) -> str:
@@ -735,6 +705,8 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_header("Leaderboard Adopt")
         print_field("Guild ID", args.guild_id)
         print_field("Channel ID", args.leaderboard_channel_id)
+        print_field("Leaderboard Message ID", args.leaderboard_message_id)
+        print_field("Stats Message ID", args.stats_message_id)
         await ctx.leaderboards.upsert_message(
             guild_id=args.guild_id,
             message_key="leaderboard",
@@ -980,7 +952,8 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
         print_section("Creators")
         for index, row in enumerate(creators, 1):
             print_line(
-                f"{index}. @{row.throne_handle} — user_id={row.discord_user_id} mode={row.tracking_mode}"
+                f"{index}. @{row.throne_handle} — Creator ID: {row.throne_creator_id} | "
+                f"User ID: {row.discord_user_id} | Mode: {row.tracking_mode}"
             )
             print_kv_raw(
                 f"handle=@{row.throne_handle} creator_id={row.throne_creator_id} "
@@ -1193,7 +1166,10 @@ async def handle_throne(ctx: OperationsContext, args: argparse.Namespace) -> Non
             return
         print_section("Subs")
         for index, row in enumerate(subs, 1):
-            print_line(f"{index}. {row.send_name} — user_id={row.discord_user_id}")
+            print_line(
+                f"{index}. {row.send_name} — User ID: {row.discord_user_id} | "
+                f"Registered: {row.registered_at.isoformat()}"
+            )
             print_kv_raw(
                 f"sub_{index}=discord_user_id:{row.discord_user_id},send_name:{row.send_name},"
                 f"registered_at:{row.registered_at.isoformat()}"
@@ -1475,7 +1451,6 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
 async def main_async() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    set_output_mode(args.output)
     ctx = await create_context()
     try:
         if args.command == "status":

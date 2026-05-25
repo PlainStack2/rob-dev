@@ -46,8 +46,6 @@ class _FakeGuildSettings:
 def test_guild_parser_accepts_scan_set_channel_and_set_role():
     parser = build_parser()
 
-    args = parser.parse_args(["--output", "kv", "guild", "scan", "--guild-id", "1"])
-    assert args.output == "kv"
     args = parser.parse_args(["guild", "scan", "--guild-id", "1"])
     assert args.command == "guild"
     assert args.guild_command == "scan"
@@ -115,10 +113,13 @@ def test_guild_scan_reports_suggested_commands(capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "Guild Scan" in out
     assert "Live Source" in out
-    assert "leaderboard_channel_id=22" in out
-    assert "send_track_channel_id_suggested=33" in out
+    assert "Leaderboard Channel:" in out
+    assert "current: #leaderboard (22)" in out
+    assert "Send Tracker Channel:" in out
+    assert "suggested: #send-tracker (33)" in out
     assert "rob guild set-channel --guild-id 1 --field send_track_channel_id --channel-id 33" in out
-    assert "domme_role_id_suggested=88" in out
+    assert "Dom/me Role:" in out
+    assert "suggested: @Dom/me (88)" in out
     assert "rob guild set-role --guild-id 1 --field domme_role_id --role-id 88" in out
 
 
@@ -137,8 +138,8 @@ def test_guild_set_channel_updates_db(capsys):
 
     assert guild_settings.channel_calls == [(1, "leaderboard_channel_id", 222)]
     out = capsys.readouterr().out
-    assert "updated=true" in out
-    assert "field=leaderboard_channel_id" in out
+    assert "Guild Channel Updated" in out
+    assert "Field: leaderboard_channel_id" in out
 
 
 def test_guild_set_role_updates_db(capsys):
@@ -156,8 +157,8 @@ def test_guild_set_role_updates_db(capsys):
 
     assert guild_settings.role_calls == [(1, "domme_role_id", 444)]
     out = capsys.readouterr().out
-    assert "updated=true" in out
-    assert "field=domme_role_id" in out
+    assert "Guild Role Updated" in out
+    assert "Field: domme_role_id" in out
 
 
 def test_live_guild_scan_prefers_running_bot_session(monkeypatch):
