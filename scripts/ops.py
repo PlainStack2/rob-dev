@@ -7,6 +7,7 @@ import re
 import secrets
 from dataclasses import dataclass
 
+import aiohttp
 import discord
 
 from rob.config.settings import configure_logging, load_base_settings
@@ -321,7 +322,7 @@ class OperationsContext:
 
 async def create_context() -> OperationsContext:
     settings = load_base_settings()
-    configure_logging(settings.log_level)
+    configure_logging(os.getenv("ROB_OPS_LOG_LEVEL", "WARNING"))
     database = Database(settings.database_url)
     await database.connect()
     bot_state = BotStateRepository(database)
@@ -456,12 +457,37 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             error="DISCORD_TOKEN is not configured for live guild scanning.",
         )
 
-    client = discord.Client(intents=discord.Intents.none())
+    headers = {
+        "Authorization": f"Bot {token}",
+        "User-Agent": "RobOps/1.0 (+https://github.com/PlainStack2/rob-dev)",
+    }
+    api_base = "https://discord.com/api/v10"
     try:
-        await client.login(token)
-        guild = await client.fetch_guild(guild_id)
-        channels = await guild.fetch_channels()
-    except discord.HTTPException as exc:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(f"{api_base}/guilds/{guild_id}") as guild_response:
+                if guild_response.status >= 400:
+                    detail = await guild_response.text()
+                    return LiveGuildScanResult(
+                        guild_id=guild_id,
+                        guild_name=None,
+                        channels=(),
+                        roles=(),
+                        error=f"Discord scan failed: GET /guilds/{guild_id} returned {guild_response.status}: {detail}",
+                    )
+                guild_payload = await guild_response.json()
+
+            async with session.get(f"{api_base}/guilds/{guild_id}/channels") as channels_response:
+                if channels_response.status >= 400:
+                    detail = await channels_response.text()
+                    return LiveGuildScanResult(
+                        guild_id=guild_id,
+                        guild_name=guild_payload.get("name"),
+                        channels=(),
+                        roles=(),
+                        error=f"Discord scan failed: GET /guilds/{guild_id}/channels returned {channels_response.status}: {detail}",
+                    )
+                channels_payload = await channels_response.json()
+    except aiohttp.ClientError as exc:
         return LiveGuildScanResult(
             guild_id=guild_id,
             guild_name=None,
@@ -469,26 +495,27 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             roles=(),
             error=f"Discord scan failed: {exc}",
         )
-    finally:
-        await client.close()
 
     text_channels = tuple(
         LiveGuildChannel(
-            channel_id=channel.id,
-            name=channel.name,
-            kind=type(channel).__name__,
+            channel_id=int(channel["id"]),
+            name=str(channel["name"]),
+            kind=f"type:{channel['type']}",
         )
-        for channel in channels
-        if isinstance(channel, discord.TextChannel)
+        for channel in channels_payload
+        if int(channel["type"]) == int(discord.ChannelType.text.value)
     )
     live_roles = tuple(
-        LiveGuildRole(role_id=role.id, name=role.name)
-        for role in sorted(guild.roles, key=lambda item: (item.name.lower(), item.id))
-        if role.name != "@everyone"
+        LiveGuildRole(role_id=int(role["id"]), name=str(role["name"]))
+        for role in sorted(
+            guild_payload.get("roles", []),
+            key=lambda item: (str(item["name"]).lower(), int(item["id"])),
+        )
+        if str(role["name"]) != "@everyone"
     )
     return LiveGuildScanResult(
         guild_id=guild_id,
-        guild_name=guild.name,
+        guild_name=guild_payload.get("name"),
         channels=tuple(sorted(text_channels, key=lambda item: (item.name, item.channel_id))),
         roles=live_roles,
     )
@@ -1120,6 +1147,7 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
             for field_name in GUILD_CHANNEL_FIELDS
         }
         channel_lookup = {channel.channel_id: channel for channel in live.channels}
+        print("Channels:")
 
         for field_name in GUILD_CHANNEL_FIELDS:
             label = GUILD_CHANNEL_LABELS[field_name]
@@ -1150,16 +1178,18 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
                 print("  suggested: (no obvious match found)")
             else:
                 print(f"  suggested: #{suggested_channel.name} ({suggested_channel.channel_id})")
-                print(
-                    "  command: "
-                    f"rob guild set-channel --guild-id {guild_id} --field {field_name} --channel-id {suggested_channel.channel_id}"
-                )
+                if configured_id != suggested_channel.channel_id or configured_channel is None:
+                    print(
+                        "  command: "
+                        f"rob guild set-channel --guild-id {guild_id} --field {field_name} --channel-id {suggested_channel.channel_id}"
+                    )
 
         configured_role_ids = {
             field_name: getattr(settings, field_name, None) if settings is not None else None
             for field_name in GUILD_ROLE_FIELDS
         }
         role_lookup = {role.role_id: role for role in live.roles}
+        print("Roles:")
 
         for field_name in GUILD_ROLE_FIELDS:
             label = GUILD_ROLE_LABELS[field_name]
@@ -1190,10 +1220,11 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
                 print("  suggested: (no obvious match found)")
             else:
                 print(f"  suggested: @{suggested_role.name} ({suggested_role.role_id})")
-                print(
-                    "  command: "
-                    f"rob guild set-role --guild-id {guild_id} --field {field_name} --role-id {suggested_role.role_id}"
-                )
+                if configured_id != suggested_role.role_id or configured_role is None:
+                    print(
+                        "  command: "
+                        f"rob guild set-role --guild-id {guild_id} --field {field_name} --role-id {suggested_role.role_id}"
+                    )
         return
 
     if args.guild_command == "set-channel":
