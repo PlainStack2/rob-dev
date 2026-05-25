@@ -8,6 +8,8 @@ To install `rob` as a global bash/zsh command:
 scripts/install-rob-global.sh
 ```
 
+The installer prefers a real system-wide binary link in `/usr/local/bin` when it has permission, and otherwise falls back to `~/.local/bin`.
+
 ## Supported commands
 
 ```bash
