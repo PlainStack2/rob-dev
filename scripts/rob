@@ -38,6 +38,7 @@ Usage:
   rob sends backfill-public-ids
   rob guild scan --guild-id ID
   rob guild set-channel --guild-id ID --field FIELD --channel-id ID|--clear
+  rob guild set-role --guild-id ID --field FIELD --role-id ID|--clear
   rob count status [--guild-id ID]
   rob count set NUMBER [--guild-id ID]
 

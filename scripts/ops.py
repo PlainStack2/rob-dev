@@ -59,6 +59,27 @@ GUILD_CHANNEL_MATCH_TOKENS = {
     "warn_log_channel_id": ("warn", "warning", "mod-log", "logs", "log"),
 }
 
+GUILD_ROLE_FIELDS = (
+    "domme_role_id",
+    "sub_role_id",
+    "mod_role_id",
+    "inactive_role_id",
+)
+
+GUILD_ROLE_LABELS = {
+    "domme_role_id": "Dom/me Role",
+    "sub_role_id": "Sub Role",
+    "mod_role_id": "Moderator Role",
+    "inactive_role_id": "Inactive Role",
+}
+
+GUILD_ROLE_MATCH_TOKENS = {
+    "domme_role_id": ("domme", "dom/me", "dom", "dommes"),
+    "sub_role_id": ("sub", "subs"),
+    "mod_role_id": ("mod", "mods", "moderator", "staff", "admin"),
+    "inactive_role_id": ("inactive", "inactivity", "away"),
+}
+
 
 @dataclass(frozen=True)
 class LiveGuildChannel:
@@ -68,10 +89,17 @@ class LiveGuildChannel:
 
 
 @dataclass(frozen=True)
+class LiveGuildRole:
+    role_id: int
+    name: str
+
+
+@dataclass(frozen=True)
 class LiveGuildScanResult:
     guild_id: int
     guild_name: str | None
     channels: tuple[LiveGuildChannel, ...]
+    roles: tuple[LiveGuildRole, ...]
     error: str | None = None
 
 
@@ -247,6 +275,19 @@ def build_parser() -> argparse.ArgumentParser:
     guild_set_channel_group = guild_set_channel.add_mutually_exclusive_group(required=True)
     guild_set_channel_group.add_argument("--channel-id", type=int)
     guild_set_channel_group.add_argument("--clear", action="store_true")
+    guild_set_role = guild_subparsers.add_parser(
+        "set-role",
+        help="Update one guild_settings role field.",
+    )
+    guild_set_role.add_argument("--guild-id", type=int, required=True)
+    guild_set_role.add_argument(
+        "--field",
+        choices=GUILD_ROLE_FIELDS,
+        required=True,
+    )
+    guild_set_role_group = guild_set_role.add_mutually_exclusive_group(required=True)
+    guild_set_role_group.add_argument("--role-id", type=int)
+    guild_set_role_group.add_argument("--clear", action="store_true")
 
     count = subparsers.add_parser("count", help="Counting operations.")
     count_subparsers = count.add_subparsers(dest="count_command", required=True)
@@ -358,6 +399,20 @@ def _normalize_channel_name(name: str) -> str:
     return name.strip().lower().replace("_", "-").replace(" ", "-")
 
 
+def _score_named_match(name: str, tokens: tuple[str, ...]) -> int:
+    normalized = _normalize_channel_name(name)
+    score = 0
+    for token in tokens:
+        normalized_token = _normalize_channel_name(token)
+        if normalized == normalized_token:
+            score = max(score, 100)
+        elif normalized.startswith(normalized_token):
+            score = max(score, 75)
+        elif normalized_token in normalized:
+            score = max(score, 50)
+    return score
+
+
 def _find_best_channel_match(
     channels: tuple[LiveGuildChannel, ...],
     field_name: str,
@@ -365,20 +420,28 @@ def _find_best_channel_match(
     tokens = GUILD_CHANNEL_MATCH_TOKENS[field_name]
     scored: list[tuple[int, LiveGuildChannel]] = []
     for channel in channels:
-        normalized = _normalize_channel_name(channel.name)
-        score = 0
-        for token in tokens:
-            if normalized == token:
-                score = max(score, 100)
-            elif normalized.startswith(token):
-                score = max(score, 75)
-            elif token in normalized:
-                score = max(score, 50)
+        score = _score_named_match(channel.name, tokens)
         if score:
             scored.append((score, channel))
     if not scored:
         return None
     scored.sort(key=lambda item: (-item[0], item[1].name, item[1].channel_id))
+    return scored[0][1]
+
+
+def _find_best_role_match(
+    roles: tuple[LiveGuildRole, ...],
+    field_name: str,
+) -> LiveGuildRole | None:
+    tokens = GUILD_ROLE_MATCH_TOKENS[field_name]
+    scored: list[tuple[int, LiveGuildRole]] = []
+    for role in roles:
+        score = _score_named_match(role.name, tokens)
+        if score:
+            scored.append((score, role))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], item[1].name, item[1].role_id))
     return scored[0][1]
 
 
@@ -389,6 +452,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             guild_id=guild_id,
             guild_name=None,
             channels=(),
+            roles=(),
             error="DISCORD_TOKEN is not configured for live guild scanning.",
         )
 
@@ -402,6 +466,7 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
             guild_id=guild_id,
             guild_name=None,
             channels=(),
+            roles=(),
             error=f"Discord scan failed: {exc}",
         )
     finally:
@@ -416,10 +481,16 @@ async def fetch_live_guild_scan(guild_id: int) -> LiveGuildScanResult:
         for channel in channels
         if isinstance(channel, discord.TextChannel)
     )
+    live_roles = tuple(
+        LiveGuildRole(role_id=role.id, name=role.name)
+        for role in sorted(guild.roles, key=lambda item: (item.name.lower(), item.id))
+        if role.name != "@everyone"
+    )
     return LiveGuildScanResult(
         guild_id=guild_id,
         guild_name=guild.name,
         channels=tuple(sorted(text_channels, key=lambda item: (item.name, item.channel_id))),
+        roles=live_roles,
     )
 
 
@@ -1034,9 +1105,11 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
         print_field("Guild ID", guild_id)
         print_field("Guild Name", live.guild_name or "(unknown)")
         print_field("Live Text Channels", len(live.channels))
+        print_field("Live Roles", len(live.roles))
         print(f"guild_id={guild_id}")
         print(f"guild_name={live.guild_name or ''}")
         print(f"live_text_channels={len(live.channels)}")
+        print(f"live_roles={len(live.roles)}")
 
         if live.error:
             print_field("Live Scan", live.error)
@@ -1081,6 +1154,46 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
                     "  command: "
                     f"rob guild set-channel --guild-id {guild_id} --field {field_name} --channel-id {suggested_channel.channel_id}"
                 )
+
+        configured_role_ids = {
+            field_name: getattr(settings, field_name, None) if settings is not None else None
+            for field_name in GUILD_ROLE_FIELDS
+        }
+        role_lookup = {role.role_id: role for role in live.roles}
+
+        for field_name in GUILD_ROLE_FIELDS:
+            label = GUILD_ROLE_LABELS[field_name]
+            configured_id = configured_role_ids[field_name]
+            configured_role = role_lookup.get(configured_id) if configured_id is not None else None
+            suggested_role = _find_best_role_match(live.roles, field_name)
+
+            status = "missing"
+            if configured_id is not None and configured_role is not None:
+                status = "configured"
+            elif configured_id is not None:
+                status = "configured_missing"
+
+            print(f"{field_name}={configured_id or ''}")
+            print(f"{field_name}_status={status}")
+            if suggested_role is not None:
+                print(f"{field_name}_suggested={suggested_role.role_id}")
+
+            print(f"{label}:")
+            if configured_id is None:
+                print("  current: (not set)")
+            elif configured_role is None:
+                print(f"  current: {configured_id} (not found in live guild scan)")
+            else:
+                print(f"  current: @{configured_role.name} ({configured_role.role_id})")
+
+            if suggested_role is None:
+                print("  suggested: (no obvious match found)")
+            else:
+                print(f"  suggested: @{suggested_role.name} ({suggested_role.role_id})")
+                print(
+                    "  command: "
+                    f"rob guild set-role --guild-id {guild_id} --field {field_name} --role-id {suggested_role.role_id}"
+                )
         return
 
     if args.guild_command == "set-channel":
@@ -1094,6 +1207,19 @@ async def handle_guild(ctx: OperationsContext, args: argparse.Namespace) -> None
         print(f"guild_id={guild_id}")
         print(f"field={args.field}")
         print(f"channel_id={getattr(updated, args.field) or 0}")
+        return
+
+    if args.guild_command == "set-role":
+        role_id = None if getattr(args, "clear", False) else int(args.role_id)
+        updated = await ctx.guild_settings.set_role_id(guild_id, args.field, role_id)
+        print_header("Guild Role Updated")
+        print_field("Guild ID", guild_id)
+        print_field("Field", args.field)
+        print_field("Role ID", role_id if role_id is not None else "(cleared)")
+        print("updated=true")
+        print(f"guild_id={guild_id}")
+        print(f"field={args.field}")
+        print(f"role_id={getattr(updated, args.field) or 0}")
         return
 
     raise RuntimeError(f"Unsupported guild command: {args.guild_command}")
