@@ -7,8 +7,11 @@ This guide covers full setup for the Django portal in this repo, including first
 Use the installer script:
 
 ```bash
-cd /opt/rob-portal/app
+# Run from a local checkout of this repo:
 sudo bash deploy/scripts/install-portal-dev.sh
+
+# Optional: override install root
+# sudo APP_ROOT=/srv/rob-portal bash deploy/scripts/install-portal-dev.sh
 ```
 
 The installer performs:
