@@ -27,6 +27,7 @@ class BaseSettings:
     inactivity_final_notice_days: int
     inactivity_owner_user_id: int | None
     inactivity_notice_channel_id: int | None
+    rob_public_base_url: str
 
 
 @dataclass(frozen=True)
@@ -41,7 +42,6 @@ class WebhookSettings(BaseSettings):
     throne_webhook_signature_header: str
     throne_webhook_signed_message_format: str
     throne_webhook_max_timestamp_skew_seconds: int
-    rob_public_base_url: str
 
 
 @dataclass(frozen=True)
@@ -138,6 +138,7 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         inactivity_final_notice_days=_env_int("INACTIVITY_FINAL_NOTICE_DAYS", 7, minimum=1),
         inactivity_owner_user_id=_env_optional_int("INACTIVITY_OWNER_USER_ID"),
         inactivity_notice_channel_id=_env_optional_int("INACTIVITY_NOTICE_CHANNEL_ID"),
+        rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://rob-dev.barecoding.com"),
     )
 
 
@@ -193,7 +194,7 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
             300,
             minimum=0,
         ),
-        rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://rob-dev.barecoding.com"),
+        rob_public_base_url=base.rob_public_base_url,
     )
 
 
@@ -217,6 +218,7 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         inactivity_final_notice_days=base.inactivity_final_notice_days,
         inactivity_owner_user_id=base.inactivity_owner_user_id,
         inactivity_notice_channel_id=base.inactivity_notice_channel_id,
+        rob_public_base_url=base.rob_public_base_url,
         discord_token=_env_str("DISCORD_TOKEN", required=True),
         bot_name=_env_str("BOT_NAME", "Rob"),
     )

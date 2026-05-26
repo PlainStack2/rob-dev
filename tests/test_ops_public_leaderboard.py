@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from rob.config.settings import load_base_settings
 from scripts.ops import build_parser, handle_leaderboard
 
 
@@ -66,3 +67,31 @@ def test_create_context_sets_public_leaderboards(monkeypatch):
     ctx = asyncio.run(ops_module.create_context())
 
     assert ctx.public_leaderboards is not None
+
+
+def test_public_create_uses_base_settings_url(monkeypatch, capsys):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("ROB_PUBLIC_BASE_URL", "https://example.com")
+    settings = load_base_settings()
+    repo = _Repo()
+    ctx = SimpleNamespace(settings=settings, public_leaderboards=repo)
+    create_args = SimpleNamespace(leaderboard_command="public", leaderboard_public_command="create", guild_id=1, title="Send Leaderboard")
+
+    asyncio.run(handle_leaderboard(ctx, create_args))
+
+    out = capsys.readouterr().out
+    assert "https://example.com/public/leaderboard/" in out
+
+
+def test_public_create_falls_back_to_default_url_when_env_missing(monkeypatch, capsys):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.delenv("ROB_PUBLIC_BASE_URL", raising=False)
+    settings = load_base_settings()
+    repo = _Repo()
+    ctx = SimpleNamespace(settings=settings, public_leaderboards=repo)
+    create_args = SimpleNamespace(leaderboard_command="public", leaderboard_public_command="create", guild_id=1, title="Send Leaderboard")
+
+    asyncio.run(handle_leaderboard(ctx, create_args))
+
+    out = capsys.readouterr().out
+    assert "https://rob-dev.barecoding.com/public/leaderboard/" in out
