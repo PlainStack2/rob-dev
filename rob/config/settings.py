@@ -41,6 +41,7 @@ class WebhookSettings(BaseSettings):
     throne_webhook_signature_header: str
     throne_webhook_signed_message_format: str
     throne_webhook_max_timestamp_skew_seconds: int
+    rob_public_base_url: str
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,7 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
             300,
             minimum=0,
         ),
+        rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://rob-dev.barecoding.com"),
     )
 
 

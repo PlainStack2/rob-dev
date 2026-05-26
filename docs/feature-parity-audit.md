@@ -59,3 +59,8 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 - 2026-05-23: Public send IDs are stored in PostgreSQL and can be backfilled via `robctl sends backfill-public-ids`; public send cards still omit IDs.
 
 - 2026-05-25: `/privacy` now serves a formal, informational-only privacy notice to all users as an ephemeral Components V2 response with no role restrictions.
+
+## Public Embeddable Leaderboards
+- Added tokenized public leaderboard HTTP route (`/public/leaderboard/{public_token}`) on webhook service.
+- Added backend `rob leaderboard public ...` commands for create/list/enable/disable/rotate-token.
+- Public page uses black background, red Times New Roman, no emojis, no images, and aggregate-only data.

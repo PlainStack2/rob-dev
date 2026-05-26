@@ -114,3 +114,13 @@ deployuser ALL=(root) NOPASSWD: ROB_BOT_CTL, ROB_WEBHOOK_CTL
 - 2026-05-23: NEW LEADER ALERT posting is now live in the leaderboard/send-tracker channel flow with bot-state dedupe.
 - 2026-05-23: Leaderboard refreshes now show dynamic status text: `🟢 Live` normally and `🟠 Paused (Maintenance)` when maintenance mode is enabled. `🔴 Offline` is supported at the card layer for an explicit future offline source.
 - 2026-05-22: Leaderboard and stats cards now use explicit separator components; stats include Unclaimed Sends section.
+
+## Public Embeddable Leaderboards
+- Create URL: `rob leaderboard public create --guild-id <guild_id> --title "Send Leaderboard"`.
+- List URLs: `rob leaderboard public list --guild-id <guild_id>`.
+- Disable URL: `rob leaderboard public disable --token <token>`.
+- Enable URL: `rob leaderboard public enable --token <token>`.
+- Rotate URL: `rob leaderboard public rotate-token --token <token>`.
+- Embed in Google Sites: **Google Sites → Insert → Embed → By URL** and paste `https://rob-dev.barecoding.com/public/leaderboard/<token>`.
+- Public page shows only rank, display name, total amount, send count, and last updated timestamp.
+- Public page intentionally excludes Discord IDs, sub names, send-level details, images, and emojis.

@@ -232,6 +232,18 @@ class LeaderboardDiagnostics:
     unmatched_sends: list[tuple[int, int, int]]
 
 
+
+
+@dataclass(frozen=True)
+class PublicLeaderboard:
+    id: int
+    guild_id: int
+    public_token: str
+    title: str
+    enabled: bool
+    theme: str
+    created_at: datetime
+    updated_at: datetime
 @dataclass(frozen=True)
 class QueueStatus:
     pending: int
