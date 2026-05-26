@@ -209,7 +209,7 @@ class PublicLeaderboardAdmin(admin.ModelAdmin):
     def rotate_token_selected(self, request, queryset):
         rotated = 0
         for row in queryset:
-            row.public_token = secrets.token_hex(16)
+            row.public_token = secrets.token_urlsafe(32)
             row.updated_at = timezone.now()
             row.save(update_fields=["public_token", "updated_at"])
             rotated += 1

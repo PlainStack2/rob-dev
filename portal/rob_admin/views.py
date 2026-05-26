@@ -19,7 +19,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .bot_ops import BotOpsClient
 from .forms import (
@@ -198,7 +198,7 @@ def portal_login(request: HttpRequest) -> HttpResponse:
     )
 
 
-@require_GET
+@require_POST
 def portal_logout(request: HttpRequest) -> HttpResponse:
     audit_action(request=request, action="portal_logout")
     auth_logout(request)
@@ -640,7 +640,7 @@ def leaderboards_view(request: HttpRequest) -> HttpResponse:
         elif intent == "create_public_leaderboard":
             form = PublicLeaderboardCreateForm(request.POST)
             if form.is_valid():
-                token = secrets.token_hex(16)
+                token = secrets.token_urlsafe(32)
                 PublicLeaderboard.objects.create(
                     guild_id=form.cleaned_data["guild_id"],
                     public_token=token,
@@ -675,7 +675,7 @@ def leaderboards_view(request: HttpRequest) -> HttpResponse:
                     elif action_value == "disable":
                         row.enabled = False
                     elif action_value == "rotate":
-                        row.public_token = secrets.token_hex(16)
+                        row.public_token = secrets.token_urlsafe(32)
                     row.updated_at = timezone.now()
                     row.save(update_fields=["enabled", "public_token", "updated_at"])
                     messages.success(request, f"Public leaderboard row updated via {action_value}.")

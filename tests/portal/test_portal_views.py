@@ -78,6 +78,51 @@ def test_discord_oauth_callback_allows_superadmin(monkeypatch):
     assert request.session["portal_discord_user_id"] == 1299308718009356289
 
 
+def test_sync_django_user_sets_staff_and_superuser_flags(monkeypatch):
+    class _FakeUser:
+        def __init__(self):
+            self.first_name = ""
+            self.is_staff = False
+            self.is_active = False
+            self.is_superuser = False
+            self.password = ""
+            self.saved_update_fields = None
+
+        def set_unusable_password(self):
+            self.password = "!"
+
+        def save(self, *, update_fields):
+            self.saved_update_fields = update_fields
+
+    fake_user = _FakeUser()
+
+    class _FakeManager:
+        def get_or_create(self, *, username):
+            assert username == "discord_1299308718009356289"
+            return fake_user, True
+
+    class _FakeUserModel:
+        objects = _FakeManager()
+
+    monkeypatch.setattr(views, "get_user_model", lambda: _FakeUserModel)
+    with override_settings(ROB_PORTAL_OWNER_USER_ID=1299308718009356289):
+        user = views._sync_django_user(
+            {
+                "id": "1299308718009356289",
+                "username": "pat",
+                "global_name": "Pat",
+            }
+        )
+
+    assert user is fake_user
+    assert user.first_name == "Pat"
+    assert user.is_staff is True
+    assert user.is_active is True
+    assert user.is_superuser is True
+    assert user.password == "!"
+    assert user.saved_update_fields is not None
+
+
 def test_database_page_does_not_expose_raw_database_url(monkeypatch):
     request = RequestFactory().get("/portal/database/")
     request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
@@ -127,6 +172,15 @@ def test_leaderboard_actions_template_includes_csrf_tokens():
     assert "{% csrf_token %}" in content
 
 
+def test_base_template_uses_post_logout_form_with_csrf():
+    repo_root = Path(__file__).resolve().parents[2]
+    template_path = repo_root / "portal" / "rob_admin" / "templates" / "rob_admin" / "base.html"
+    content = template_path.read_text(encoding="utf-8")
+    assert '<form method="post" action="/portal/logout/">' in content
+    assert "{% csrf_token %}" in content
+    assert '<a href="/portal/logout/">' not in content
+
+
 def test_leaderboard_actions_reject_non_post_mutations():
     request = RequestFactory().put("/portal/leaderboards/")
     request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
@@ -134,3 +188,38 @@ def test_leaderboard_actions_reject_non_post_mutations():
     request.session["portal_discord_user_id"] = 1299308718009356289
     response = views.leaderboards_view(request)
     assert response.status_code == 405
+
+
+def test_portal_logout_is_post_only():
+    client = Client()
+    get_response = client.get("/portal/logout/")
+    assert get_response.status_code == 405
+
+    post_response = client.post("/portal/logout/")
+    assert post_response.status_code == 302
+    assert post_response["Location"].endswith("/portal/login/")
+
+
+def test_settings_page_does_not_expose_raw_secrets(monkeypatch):
+    request = RequestFactory().get("/portal/settings/")
+    request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
+    _attach_session(request)
+    request.session["portal_discord_user_id"] = 1299308718009356289
+    request.session["portal_discord_display_name"] = "Pat"
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:db-secret-pass@localhost:5432/rob_dev")
+    monkeypatch.setenv("PORTAL_DATABASE_URL", "postgresql://portal:portal-secret@localhost:5432/rob_dev")
+
+    with override_settings(
+        DISCORD_CLIENT_SECRET="discord-oauth-secret",
+        ROB_OPS_SECRET="ops-bridge-secret",
+    ):
+        raw_view = _unwrap_view(views.settings_view)
+        response = raw_view(request)
+
+    body = response.content.decode("utf-8")
+    assert "db-secret-pass" not in body
+    assert "portal-secret" not in body
+    assert "discord-oauth-secret" not in body
+    assert "ops-bridge-secret" not in body
+    assert "***" in body

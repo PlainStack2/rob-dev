@@ -53,6 +53,25 @@
       margin-bottom: 6px;
     }
     .nav a:hover { background: var(--panel); color: #fff; }
+    .nav form { margin: 0; }
+    .nav button.logout {
+      width: 100%;
+      text-align: left;
+      color: var(--muted);
+      text-decoration: none;
+      display: block;
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .nav button.logout:hover {
+      background: var(--panel);
+      color: #fff;
+    }
     .top {
       display: flex;
       justify-content: space-between;
@@ -160,7 +179,10 @@
       <a href="/portal/leaderboards/">Leaderboards</a>
       <a href="/portal/sends/">Sends</a>
       <a href="/portal/settings/">Settings</a>
-      <a href="/portal/logout/">Logout</a>
+      <form method="post" action="/portal/logout/">
+        {% csrf_token %}
+        <button type="submit" class="logout">Logout</button>
+      </form>
     </nav>
   </aside>
   <main>

@@ -23,7 +23,7 @@ def setup_django() -> None:
     os.environ.setdefault("DISCORD_CLIENT_ID", "test-client-id")
     os.environ.setdefault("DISCORD_CLIENT_SECRET", "test-client-secret")
     os.environ.setdefault("DISCORD_REDIRECT_URI", "http://localhost/portal/auth/discord/callback")
-    os.environ.setdefault("PORTAL_DATABASE_URL", "sqlite:///:memory:")
+    os.environ.setdefault("PORTAL_DATABASE_URL", "postgresql://portal:portal@127.0.0.1:5432/rob_dev")
 
     import django
     from django.apps import apps

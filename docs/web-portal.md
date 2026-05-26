@@ -11,6 +11,19 @@ Rob now includes a separate Django-based superadmin portal under `portal/`.
 
 This portal is intentionally separate from the Discord bot and webhook services.
 
+## What PR #32 Adds
+
+The portal rollout in PR #32 introduces:
+
+- Django portal app under `portal/`
+- Discord OAuth superadmin login
+- Django Admin mappings for Rob DB tables
+- custom pages for dashboard/services/logs/database/leaderboards/sends/settings
+- private bot-ops bridge integration
+- safe allowlisted log reader with redaction
+- migration `010_portal_audit_log` for portal action auditing
+- deploy script and systemd service template for the portal service
+
 ## Why Django Admin
 
 Django Admin provides a secure, mature baseline for:
@@ -67,6 +80,12 @@ ROB_PORTAL_ALLOWED_SERVICES=rob-bot-dev.service,rob-webhook-dev.service,rob-port
 ROB_PORTAL_ENABLE_SERVICE_ACTIONS=false
 ```
 
+When `ROB_PORTAL_ENABLED=true`, the portal now enforces:
+
+- `PORTAL_DATABASE_URL` or `DATABASE_URL` must be set
+- `ROB_PORTAL_SECRET_KEY` must be non-empty and not the default placeholder
+- SQLite fallback is only for disabled/local development use
+
 ## Authentication Model
 
 1. User visits `/portal/login/`.
@@ -96,6 +115,22 @@ Portal models map to existing Rob tables with `managed = False`:
 - `blacklist`
 - `schema_migrations`
 - `portal_audit_log`
+
+### Where Django’s Own Tables Live
+
+Django creates auth/session/admin tables (`auth_user`, `django_content_type`, `django_admin_log`, etc.) in whatever database the portal connects to.
+
+Option A (recommended for current dev): use `rob_dev` via `PORTAL_DATABASE_URL`.
+
+- Simple operationally
+- Django tables and Rob tables share the same database
+
+Option B (cleaner future separation): use a dedicated portal database (for example `rob_portal_dev`).
+
+- Better logical isolation
+- Requires separate provisioning/migration workflow
+
+For enabled deployments, PostgreSQL is required. SQLite is not an enabled-runtime target.
 
 Legacy tables are surfaced as warnings in `/portal/database/`:
 
@@ -137,12 +172,16 @@ If `ROB_OPS_SECRET` is set, requests include `X-Rob-Ops-Secret`.
 ## Local Run
 
 ```bash
+cd /opt/rob-portal/app
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt -r portal/requirements.txt
+PYTHONPATH=. .venv/bin/python -m scripts.run_migrations
+PYTHONPATH=. .venv/bin/python -m scripts.check_db
 cd portal
-python -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
-DJANGO_SETTINGS_MODULE=rob_portal.settings .venv/bin/python manage.py migrate
-DJANGO_SETTINGS_MODULE=rob_portal.settings .venv/bin/python manage.py runserver 127.0.0.1:8090
+../.venv/bin/python manage.py migrate --noinput
+../.venv/bin/python manage.py collectstatic --noinput
+../.venv/bin/python manage.py check
+../.venv/bin/python manage.py runserver 127.0.0.1:8090
 ```
 
 ## Systemd Example
@@ -152,16 +191,32 @@ Use `deploy/systemd/rob-portal-dev.service` as the baseline unit.
 ## Nginx Example
 
 ```nginx
+location /portal/static/ {
+    alias /opt/rob-portal/app/portal/staticfiles/;
+    access_log off;
+    expires 1h;
+}
+
 location /portal/ {
     proxy_pass http://127.0.0.1:8090/portal/;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_redirect off;
 }
 ```
 
 Keep `/public/leaderboard/` and `/throne/webhook/` routed to the existing webhook service.
+
+## Cloudflare Notes
+
+For `https://rob-dev.barecoding.com/portal/`:
+
+- use SSL mode `Full (strict)`
+- keep `/portal/*` uncached (cache bypass rule)
+- optionally place Cloudflare Access in front of `/portal/*` for an extra auth layer
 
 ## Not Included Yet
 

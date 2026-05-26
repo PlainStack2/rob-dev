@@ -45,8 +45,20 @@ if portal_env_file:
 ROB_PORTAL_ENV = os.getenv("ROB_PORTAL_ENV", "dev").strip() or "dev"
 ROB_PORTAL_ENABLED = _env_bool("ROB_PORTAL_ENABLED", False)
 
-SECRET_KEY = os.getenv("ROB_PORTAL_SECRET_KEY") or "rob-portal-dev-only-change-me"
+_DEFAULT_SECRET_KEY = "rob-portal-dev-only-change-me"
+_secret_key_from_env = (os.getenv("ROB_PORTAL_SECRET_KEY") or "").strip()
+SECRET_KEY = _secret_key_from_env or _DEFAULT_SECRET_KEY
 DEBUG = ROB_PORTAL_ENV != "prod"
+
+portal_database_url = os.getenv("PORTAL_DATABASE_URL") or os.getenv("DATABASE_URL")
+if ROB_PORTAL_ENABLED and not portal_database_url:
+    raise RuntimeError("ROB_PORTAL_ENABLED=true requires PORTAL_DATABASE_URL or DATABASE_URL.")
+if ROB_PORTAL_ENABLED and portal_database_url.lower().startswith("sqlite"):
+    raise RuntimeError("ROB_PORTAL_ENABLED=true requires a PostgreSQL PORTAL_DATABASE_URL or DATABASE_URL.")
+if ROB_PORTAL_ENABLED and (not _secret_key_from_env or _secret_key_from_env == _DEFAULT_SECRET_KEY):
+    raise RuntimeError(
+        "ROB_PORTAL_ENABLED=true requires ROB_PORTAL_SECRET_KEY to be set to a non-default value."
+    )
 
 ALLOWED_HOSTS = list(
     _env_csv(
@@ -98,7 +110,6 @@ TEMPLATES = [
 WSGI_APPLICATION = "rob_portal.wsgi.application"
 ASGI_APPLICATION = "rob_portal.asgi.application"
 
-portal_database_url = os.getenv("PORTAL_DATABASE_URL") or os.getenv("DATABASE_URL")
 if portal_database_url:
     DATABASES = {
         "default": dj_database_url.parse(
@@ -167,4 +178,3 @@ ROB_PORTAL_ALLOWED_SERVICES = _env_csv(
     "rob-bot-dev.service,rob-webhook-dev.service,rob-portal-dev.service",
 )
 ROB_PORTAL_ENABLE_SERVICE_ACTIONS = _env_bool("ROB_PORTAL_ENABLE_SERVICE_ACTIONS", False)
-
