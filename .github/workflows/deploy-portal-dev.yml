@@ -30,10 +30,10 @@ jobs:
       - name: Run portal deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.PORTAL_DEV_HOST }}
-          username: ${{ secrets.PORTAL_DEV_USER }}
-          key: ${{ secrets.PORTAL_DEV_SSH_KEY }}
-          port: ${{ secrets.PORTAL_DEV_PORT }}
+          host: ${{ secrets.WEBHOOK_DEV_HOST }}
+          username: ${{ secrets.RWEBHOOK_DEV_USER }}
+          key: ${{ secrets.WEBHOOK_DEV_SSH_KEY }}
+          port: ${{ secrets.WEBHOOK_DEV_PORT }}
           script: |
             set -e
             DEPLOY_BRANCH=main DEPLOY_REF="${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.sha }}" /opt/rob-portal/deploy-portal-dev.sh
