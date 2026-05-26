@@ -26,7 +26,7 @@ def _privacy_message(containers: list[discord.ui.Container]) -> RenderedMessage:
 
 
 def privacy_notice_message() -> RenderedMessage:
-    return _privacy_message(privacy_notice_containers())
+    return privacy_notice_messages()[0]
 
 
 def privacy_notice_containers() -> list[discord.ui.Container]:
@@ -164,4 +164,4 @@ def privacy_notice_messages() -> list[RenderedMessage]:
 
 
 def privacy_card() -> RenderedMessage:
-    return privacy_notice_message()
+    return privacy_notice_messages()[0]

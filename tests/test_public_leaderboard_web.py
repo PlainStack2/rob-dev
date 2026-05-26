@@ -15,8 +15,11 @@ class _FakePublicRepo:
 
 
 class _FakeLeaderboards:
-    async def get_top_dommes(self, *args, **kwargs):
-        return [SimpleNamespace(total_cents=10000, send_count=1), SimpleNamespace(total_cents=0, send_count=0)]
+    async def get_top_dommes_public(self, *args, **kwargs):
+        return [
+            SimpleNamespace(label="High Priestess Rae", total_cents=10000, send_count=1),
+            SimpleNamespace(label="Registered Dom/me", total_cents=0, send_count=0),
+        ]
 
 
 class _Req:
@@ -50,8 +53,11 @@ def test_public_route_renders_html_with_required_style(monkeypatch):
     assert "background:#000" in text
     assert "#b00000" in text
     assert "Times New Roman" in text
+    assert "High Priestess Rae" in text
     assert "<img" not in text
     assert "<@" not in text
     assert "🥇" not in text
+    assert "123456789012345678" not in text
+    assert "X-Frame-Options" not in response.headers
     assert "$100.00 sent" in text
     assert "1 sends" in text

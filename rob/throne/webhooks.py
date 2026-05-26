@@ -46,7 +46,7 @@ async def handle_public_leaderboard(request: web.Request) -> web.Response:
     if row is None or not row.enabled:
         return web.Response(status=404, text="Not found", content_type="text/plain")
     leaderboards = LeaderboardsRepository(database)
-    top = await leaderboards.get_top_dommes(
+    top = await leaderboards.get_top_dommes_public(
         row.guild_id,
         limit=settings.leaderboard_limit,
         include_test_sends=settings.throne_parse_test_sends_as_real_sends,
@@ -54,8 +54,8 @@ async def handle_public_leaderboard(request: web.Request) -> web.Response:
         owner_test_user_id=settings.throne_test_send_leaderboard_owner_user_id,
     )
     entries = [
-        {"name": f"Registered Dom/me {idx}", "amount": f"${(item.total_cents / 100):,.2f}", "count": f"{item.send_count} sends"}
-        for idx, item in enumerate(top, 1)
+        {"name": item.label or "Registered Dom/me", "amount": f"${(item.total_cents / 100):,.2f}", "count": f"{item.send_count} sends"}
+        for item in top
     ]
     html = _public_leaderboard_html(title=row.title, entries=entries, updated=datetime.now(UTC).strftime("%Y-%m-%d %H:%M"))
     response = web.Response(text=html, content_type="text/html")

@@ -124,3 +124,4 @@ deployuser ALL=(root) NOPASSWD: ROB_BOT_CTL, ROB_WEBHOOK_CTL
 - Embed in Google Sites: **Google Sites → Insert → Embed → By URL** and paste `https://rob-dev.barecoding.com/public/leaderboard/<token>`.
 - Public page shows only rank, display name, total amount, send count, and last updated timestamp.
 - Public page intentionally excludes Discord IDs, sub names, send-level details, images, and emojis.
+- The public leaderboard route is iframe-safe for Google Sites embedding: it does not set `X-Frame-Options: DENY`/`SAMEORIGIN` and does not apply a CSP `frame-ancestors` block.

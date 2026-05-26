@@ -189,6 +189,53 @@ class LeaderboardsRepository:
         )
         return entries[0] if entries else None
 
+    async def get_top_dommes_public(
+        self,
+        guild_id: int,
+        *,
+        limit: int = 10,
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] | list[str] = (),
+        owner_test_user_id: int | None = None,
+    ) -> list[LeaderboardEntry]:
+        usernames = _normalized_test_usernames(test_gifter_usernames)
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                f"""
+                {_valid_sends_cte()}
+                SELECT
+                    COALESCE(NULLIF(TRIM(tc.throne_handle), ''), 'Registered Dom/me') AS public_label,
+                    d.discord_user_id AS user_id,
+                    COALESCE(SUM(v.amount_cents), 0) AS total_cents,
+                    COUNT(v.id) AS send_count
+                FROM dommes d
+                LEFT JOIN throne_creators tc
+                    ON tc.guild_id = d.guild_id
+                    AND tc.discord_user_id = d.discord_user_id
+                LEFT JOIN valid_sends v
+                    ON v.guild_id = d.guild_id
+                    AND v.recipient_user_id = d.discord_user_id
+                WHERE d.guild_id = $1
+                GROUP BY d.discord_user_id, tc.throne_handle
+                ORDER BY total_cents DESC, send_count DESC, d.discord_user_id ASC
+                LIMIT $5
+                """,
+                guild_id,
+                include_test_sends,
+                usernames,
+                owner_test_user_id,
+                limit,
+            )
+        return [
+            LeaderboardEntry(
+                label=str(row["public_label"]),
+                user_id=int(row["user_id"]),
+                total_cents=int(row["total_cents"] or 0),
+                send_count=int(row["send_count"] or 0),
+            )
+            for row in rows
+        ]
+
     async def get_top_subs(
         self,
         guild_id: int,

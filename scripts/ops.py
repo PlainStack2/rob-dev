@@ -827,7 +827,9 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_kv("excluded_sends", report.excluded_sends)
         return
     if args.leaderboard_command == "public":
-        base_url = ctx.settings.rob_public_base_url.rstrip("/")
+        base_url = (ctx.settings.rob_public_base_url or "").strip().rstrip("/")
+        if not base_url or not (base_url.startswith("http://") or base_url.startswith("https://")):
+            raise RuntimeError("ROB_PUBLIC_BASE_URL is missing or invalid. Set it to an absolute http(s) URL.")
         if args.leaderboard_public_command == "create":
             token = secrets.token_urlsafe(32)
             row = await ctx.public_leaderboards.create(guild_id=args.guild_id, public_token=token, title=args.title)

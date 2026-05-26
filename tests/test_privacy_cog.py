@@ -89,17 +89,16 @@ def test_privacy_command_defers_ephemeral_and_sends_ephemeral_followups():
         assert "embeds" not in kwargs
 
 
-def test_privacy_notice_message_has_seven_containers_with_required_footer_and_sections():
+def test_privacy_notice_message_is_safe_first_part_under_4000_text_chars():
     message = privacy_notice_message()
     payload = message.send_kwargs()
     view = payload["view"]
 
-    assert len(view.children) == 7
+    assert len(view.children) >= 1
     assert all(isinstance(container, discord.ui.Container) for container in view.children)
-
+    assert len(_rendered_text_from_view(view)) < 4000
     all_text = _rendered_text_from_view(view)
-    for section in EXPECTED_SECTIONS:
-        assert section in all_text
+    assert "Rob Privacy Notice" in all_text
 
     for container in view.children:
         container_text = "\n".join(
@@ -112,7 +111,10 @@ def test_privacy_notice_message_has_seven_containers_with_required_footer_and_se
 
 
 def test_privacy_notice_wording_avoids_casual_phrases():
-    all_text = _rendered_text_from_view(privacy_notice_message().send_kwargs()["view"])
+    all_text = "".join(
+        _rendered_text_from_view(message.send_kwargs()["view"])
+        for message in privacy_notice_messages()
+    )
     for forbidden in FORBIDDEN_PHRASES:
         assert forbidden not in all_text
 
