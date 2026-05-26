@@ -236,9 +236,9 @@ def test_leader_alert_card_shape_and_color():
     assert msg.view.children[0].accent_color == COLOR_LEADER_ALERT
 
 
-def test_privacy_card_uses_multiple_containers_and_policy_language():
+def test_privacy_card_returns_safe_part_under_4000_chars():
     msg = privacy_card()
-    assert len(msg.view.children) >= 4
+    assert len(msg.view.children) >= 1
     for container in msg.view.children:
         assert type(container).__name__ == "Container"
     all_text = "\n".join(
@@ -246,8 +246,7 @@ def test_privacy_card_uses_multiple_containers_and_policy_language():
         for container in msg.view.children
         for item in getattr(container, "children", [])
     )
+    assert len(all_text) < 4000
     assert "Rob Privacy Notice" in all_text
     assert "Information Collected or Received" in all_text
-    assert "Purpose of Processing" in all_text
-    assert "Data Minimisation and Third-Party Services" in all_text
     assert "Privacy Notice valid as of 25/05/2026" in all_text

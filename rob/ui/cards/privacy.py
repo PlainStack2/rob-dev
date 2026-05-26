@@ -18,11 +18,20 @@ def _privacy_container(*, title: str, body: str) -> discord.ui.Container:
     )
 
 
-def privacy_notice_message() -> RenderedMessage:
-    require_components_v2()
+def _privacy_message(containers: list[discord.ui.Container]) -> RenderedMessage:
     view = discord.ui.LayoutView(timeout=1800)
+    for container in containers:
+        view.add_item(container)
+    return RenderedMessage(view=view)
 
-    view.add_item(
+
+def privacy_notice_message() -> RenderedMessage:
+    return privacy_notice_messages()[0]
+
+
+def privacy_notice_containers() -> list[discord.ui.Container]:
+    require_components_v2()
+    return [
         _privacy_container(
             title="## Rob Privacy Notice",
             body=(
@@ -30,9 +39,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "It also explains the purposes for which that information is used, the circumstances in which information may be displayed within the server, and the options available to users who wish to request removal of information associated with them."
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## Information Collected or Received",
             body=(
@@ -94,9 +101,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "-# - Submission timestamp"
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## Purpose of Processing",
             body=(
@@ -106,9 +111,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "Rob does not sell user information, use it for advertising, or use it to create user profiles outside the operation of Rob’s own features."
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## Data Minimisation and Third-Party Services",
             body=(
@@ -118,9 +121,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "If Rob receives information that is unexpected, unnecessary, or potentially sensitive, reasonable steps will be taken to review the issue, reduce unnecessary storage, and notify affected users where appropriate."
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## Public Display of Information",
             body=(
@@ -130,9 +131,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "Users should avoid submitting sensitive personal information through Rob commands, reports, send notes, third-party gift messages, or other inputs unless that information is necessary for the relevant feature."
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## User Control and Data Removal",
             body=(
@@ -143,9 +142,7 @@ def privacy_notice_message() -> RenderedMessage:
                 "Questions or concerns regarding information collected, stored, or used by Rob should be directed to Pat."
             ),
         )
-    )
-
-    view.add_item(
+        ,
         _privacy_container(
             title="## Changes to This Notice",
             body=(
@@ -154,10 +151,17 @@ def privacy_notice_message() -> RenderedMessage:
                 "The effective date of this notice is shown below."
             ),
         )
-    )
+    ]
 
-    return RenderedMessage(view=view)
+
+def privacy_notice_messages() -> list[RenderedMessage]:
+    containers = privacy_notice_containers()
+    return [
+        _privacy_message(containers[:2]),
+        _privacy_message(containers[2:5]),
+        _privacy_message(containers[5:7]),
+    ]
 
 
 def privacy_card() -> RenderedMessage:
-    return privacy_notice_message()
+    return privacy_notice_messages()[0]

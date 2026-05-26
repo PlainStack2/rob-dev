@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, UTC
+from html import escape
 from typing import Any
 
 from aiohttp import web
@@ -9,6 +11,8 @@ from aiohttp import web
 from rob.config.settings import WebhookSettings
 from rob.database.connection import Database
 from rob.database.repositories.bot_state import BotStateRepository
+from rob.database.repositories.leaderboards import LeaderboardsRepository
+from rob.database.repositories.public_leaderboards import PublicLeaderboardsRepository
 from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.services.maintenance_service import MaintenanceService
@@ -23,6 +27,40 @@ from rob.throne.security import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _public_leaderboard_html(*, title: str, entries: list[dict[str, str]], updated: str) -> str:
+    rows = "\n".join(
+        f'<section class="entry"><div class="rank">#{i}</div><div class="name">{escape(e["name"])}</div><div class="meta">{escape(e["amount"])} sent</div><div class="meta">{escape(e["count"])}</div></section>'
+        for i, e in enumerate(entries, 1)
+    )
+    return f"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{escape(title)}</title><style>html,body{{margin:0;padding:0;background:#000;color:#b00000;font-family:\"Times New Roman\",Times,serif;}}.leaderboard{{width:100%;box-sizing:border-box;padding:24px;background:#000;color:#b00000;}}h1{{margin:0 0 18px;font-size:32px;font-weight:bold;color:#cc0000;}}.entry{{border-top:1px solid #5a0000;padding:12px 0;}}.rank{{font-size:22px;font-weight:bold;}}.name{{font-size:22px;font-weight:bold;}}.meta{{font-size:16px;margin-top:4px;}}.updated{{border-top:1px solid #5a0000;margin-top:18px;padding-top:10px;font-size:13px;}}</style></head><body><main class=\"leaderboard\"><h1>{escape(title)}</h1>{rows}<div class=\"updated\">Last updated: {escape(updated)} UTC</div></main></body></html>"""
+
+
+async def handle_public_leaderboard(request: web.Request) -> web.Response:
+    token = request.match_info["public_token"]
+    database: Database = request.app["database"]
+    settings: WebhookSettings = request.app["settings"]
+    public_repo = PublicLeaderboardsRepository(database)
+    row = await public_repo.get_by_token(token)
+    if row is None or not row.enabled:
+        return web.Response(status=404, text="Not found", content_type="text/plain")
+    leaderboards = LeaderboardsRepository(database)
+    top = await leaderboards.get_top_dommes_public(
+        row.guild_id,
+        limit=settings.leaderboard_limit,
+        include_test_sends=settings.throne_parse_test_sends_as_real_sends,
+        test_gifter_usernames=settings.throne_test_gifter_usernames,
+        owner_test_user_id=settings.throne_test_send_leaderboard_owner_user_id,
+    )
+    entries = [
+        {"name": item.label or "Registered Dom/me", "amount": f"${(item.total_cents / 100):,.2f}", "count": f"{item.send_count} sends"}
+        for item in top
+    ]
+    html = _public_leaderboard_html(title=row.title, entries=entries, updated=datetime.now(UTC).strftime("%Y-%m-%d %H:%M"))
+    response = web.Response(text=html, content_type="text/html")
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return response
 
 
 async def handle_health(request: web.Request) -> web.Response:
@@ -146,6 +184,7 @@ def create_webhook_app(
     app["throne_service"] = ThroneService()
     app["subs_repository"] = SubsRepository(database)
     app.router.add_get("/health", handle_health)
+    app.router.add_get("/public/leaderboard/{public_token}", handle_public_leaderboard)
     app.router.add_post("/throne/webhook/{creator_id}/{secret}", handle_throne_webhook)
 
     async def close_throne_service(_app: web.Application) -> None:
