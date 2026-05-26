@@ -92,20 +92,20 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ inputs.run_create_roles }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_create_roles }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/01_create_roles.sql
           else
             echo "Skipping role creation script (01_create_roles.sql)."
           fi
 
-          if [[ "${{ inputs.run_create_databases }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_create_databases }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/02_create_databases.sql
           else
             echo "Skipping database creation script (02_create_databases.sql)."
           fi
 
       - name: Apply development DB changes
-        if: ${{ inputs.apply_dev }}
+        if: ${{ github.event.inputs.apply_dev == 'true' }}
         env:
           ROB_DB_ADMIN_DATABASE_URL: ${{ secrets.ROB_DB_ADMIN_DATABASE_URL }}
           ROB_DEV_BOT_DATABASE_URL: ${{ secrets.ROB_DEV_BOT_DATABASE_URL }}
@@ -119,7 +119,7 @@ jobs:
 
           derive_url_for_db() {
             local database_name="$1"
-            python -c "import sys; from urllib.parse import urlsplit, urlunsplit; url=sys.argv[1]; db=sys.argv[2]; p=urlsplit(url); print(urlunsplit((p.scheme, p.netloc, f'/{db}', p.query, p.fragment)))" "$ROB_DB_ADMIN_DATABASE_URL" "$database_name"
+            python -c "import sys; from urllib.parse import urlsplit, urlunsplit; url=sys.argv[1]; db=sys.argv[2]; p=urlsplit(url); print(urlunsplit((p.scheme, p.netloc, '/' + db, p.query, p.fragment)))" "$ROB_DB_ADMIN_DATABASE_URL" "$database_name"
           }
 
           export MIGRATION_DATABASE_URL="$(derive_url_for_db rob_dev)"
@@ -127,17 +127,17 @@ jobs:
 
           psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/03_grant_dev_permissions.sql
 
-          if [[ "${{ inputs.run_dev_ownership_fix }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_dev_ownership_fix }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/05_fix_dev_table_ownership.sql
           fi
-          if [[ "${{ inputs.run_legacy_merge_cleanup }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_legacy_merge_cleanup }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/06_cleanup_legacy_tables.sql
           fi
-          if [[ "${{ inputs.run_verify_sql }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_verify_sql }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -d rob_dev -v ON_ERROR_STOP=1 -f scripts/db/07_verify_permissions.sql
           fi
 
-          if [[ "${{ inputs.run_runtime_checks }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_runtime_checks }}" == "true" ]]; then
             if [[ -n "${ROB_DEV_BOT_DATABASE_URL:-}" ]]; then
               export DATABASE_URL="$ROB_DEV_BOT_DATABASE_URL"
               PYTHONPATH=. python -m scripts.check_db
@@ -153,7 +153,7 @@ jobs:
           fi
 
       - name: Apply production DB changes
-        if: ${{ inputs.apply_prod }}
+        if: ${{ github.event.inputs.apply_prod == 'true' }}
         env:
           ROB_DB_ADMIN_DATABASE_URL: ${{ secrets.ROB_DB_ADMIN_DATABASE_URL }}
           ROB_PROD_BOT_DATABASE_URL: ${{ secrets.ROB_PROD_BOT_DATABASE_URL }}
@@ -167,7 +167,7 @@ jobs:
 
           derive_url_for_db() {
             local database_name="$1"
-            python -c "import sys; from urllib.parse import urlsplit, urlunsplit; url=sys.argv[1]; db=sys.argv[2]; p=urlsplit(url); print(urlunsplit((p.scheme, p.netloc, f'/{db}', p.query, p.fragment)))" "$ROB_DB_ADMIN_DATABASE_URL" "$database_name"
+            python -c "import sys; from urllib.parse import urlsplit, urlunsplit; url=sys.argv[1]; db=sys.argv[2]; p=urlsplit(url); print(urlunsplit((p.scheme, p.netloc, '/' + db, p.query, p.fragment)))" "$ROB_DB_ADMIN_DATABASE_URL" "$database_name"
           }
 
           export MIGRATION_DATABASE_URL="$(derive_url_for_db rob_prod)"
@@ -175,11 +175,11 @@ jobs:
 
           psql "$ROB_DB_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db/04_grant_prod_permissions.sql
 
-          if [[ "${{ inputs.run_verify_sql }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_verify_sql }}" == "true" ]]; then
             psql "$ROB_DB_ADMIN_DATABASE_URL" -d rob_prod -v ON_ERROR_STOP=1 -f scripts/db/07_verify_permissions.sql
           fi
 
-          if [[ "${{ inputs.run_runtime_checks }}" == "true" ]]; then
+          if [[ "${{ github.event.inputs.run_runtime_checks }}" == "true" ]]; then
             if [[ -n "${ROB_PROD_BOT_DATABASE_URL:-}" ]]; then
               export DATABASE_URL="$ROB_PROD_BOT_DATABASE_URL"
               PYTHONPATH=. python -m scripts.check_db
