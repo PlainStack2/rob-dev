@@ -17,6 +17,7 @@ BEGIN
         'leaderboard_message',
         'leaderboard_messages',
         'public_leaderboards',
+        'portal_audit_log',
         'schema_migrations',
         'send_requests',
         'sends',
@@ -42,7 +43,8 @@ BEGIN
         'sends_id_seq',
         'send_requests_id_seq',
         'leaderboard_message_id_seq',
-        'public_leaderboards_id_seq'
+        'public_leaderboards_id_seq',
+        'portal_audit_log_id_seq'
     ]
     LOOP
         IF to_regclass(format('public.%I', sequence_name)) IS NOT NULL THEN

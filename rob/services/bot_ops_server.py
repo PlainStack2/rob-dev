@@ -31,6 +31,15 @@ class BotOpsServer:
         app = web.Application()
         app.router.add_get("/health", self._handle_health)
         app.router.add_get("/guilds/{guild_id}/scan", self._handle_guild_scan)
+        app.router.add_post(
+            "/guilds/{guild_id}/leaderboard/public/refresh-names",
+            self._handle_refresh_public_names,
+        )
+        app.router.add_post(
+            "/guilds/{guild_id}/leaderboard/refresh",
+            self._handle_refresh_leaderboard,
+        )
+        app.router.add_post("/maintenance", self._handle_set_maintenance)
 
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
@@ -104,3 +113,86 @@ class BotOpsServer:
                 "source": "bot-session",
             }
         )
+
+    async def _handle_refresh_public_names(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return web.json_response({"error": "guild_not_in_cache", "guild_id": guild_id}, status=404)
+
+        if not hasattr(self.bot, "dommes_repo"):
+            return web.json_response({"error": "dommes_repo_unavailable"}, status=500)
+
+        dommes = await self.bot.dommes_repo.list_for_guild(guild_id)
+        updated = 0
+        for domme in dommes:
+            label: str | None = None
+            member = guild.get_member(domme.discord_user_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(domme.discord_user_id)
+                except (discord.NotFound, discord.HTTPException):
+                    member = None
+            if member is not None:
+                label = (member.display_name or member.name or "").strip() or None
+
+            if label:
+                await self.bot.dommes_repo.set_public_display_name(
+                    guild_id=guild_id,
+                    discord_user_id=domme.discord_user_id,
+                    label=label,
+                )
+                updated += 1
+
+        return web.json_response(
+            {
+                "ok": True,
+                "guild_id": guild_id,
+                "registered_dommes": len(dommes),
+                "updated_display_names": updated,
+            }
+        )
+
+    async def _handle_refresh_leaderboard(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+
+        if not hasattr(self.bot, "leaderboard_service"):
+            return web.json_response({"error": "leaderboard_service_unavailable"}, status=500)
+
+        refreshed = await self.bot.leaderboard_service.refresh_guild(guild_id)
+        return web.json_response({"ok": bool(refreshed), "guild_id": guild_id, "refreshed": bool(refreshed)})
+
+    async def _handle_set_maintenance(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+
+        if not hasattr(self.bot, "maintenance_service"):
+            return web.json_response({"error": "maintenance_service_unavailable"}, status=500)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        enabled = bool(payload.get("enabled"))
+        reason = str(payload.get("reason") or "").strip() or None
+        if enabled:
+            await self.bot.maintenance_service.enable(reason=reason)
+        else:
+            await self.bot.maintenance_service.disable()
+
+        state = await self.bot.maintenance_service.get_state()
+        return web.json_response({"ok": True, "enabled": state.enabled, "reason": state.reason or ""})

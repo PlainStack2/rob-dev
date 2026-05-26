@@ -115,7 +115,8 @@ write_env_template_if_missing() {
   cat > "${env_file}" <<'EOF'
 APP_ENV=dev
 LOG_LEVEL=INFO
-DATABASE_URL=postgresql://rob_dev_app:replace@127.0.0.1:5432/rob_dev
+DATABASE_URL=postgresql://rob_dev_bot:replace@127.0.0.1:5432/rob_dev
+MIGRATION_DATABASE_URL=postgresql://rob_dev_migrator:replace@127.0.0.1:5432/rob_dev
 DISCORD_TOKEN=replace
 BOT_NAME=Rob Dev
 EOF

@@ -12,7 +12,11 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "rob" / "database" / "mig
 
 
 def resolve_migration_database_url(settings: object | None = None) -> str:
-    value = (os.getenv("MIGRATION_DATABASE_URL") or "").strip()
+    value = (
+        os.getenv("MIGRATION_DATABASE_URL")
+        or os.getenv("PORTAL_MIGRATION_DATABASE_URL")
+        or ""
+    ).strip()
     if value:
         return value
     if settings is not None:
@@ -24,7 +28,7 @@ def resolve_migration_database_url(settings: object | None = None) -> str:
         return runtime_fallback
     raise RuntimeError(
         "Missing required environment variable: MIGRATION_DATABASE_URL "
-        "(or DATABASE_URL fallback)."
+        "(or PORTAL_MIGRATION_DATABASE_URL / DATABASE_URL fallback)."
     )
 
 

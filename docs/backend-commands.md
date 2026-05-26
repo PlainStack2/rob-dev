@@ -14,6 +14,16 @@ The installer prefers a real system-wide binary link in `/usr/local/bin` when it
 
 For production-readiness database setup (dev/prod role separation, ownership repair, grants, and cleanup), use the SQL admin pack in [`scripts/db/`](../scripts/db/README.md).
 
+## Portal commands
+
+The Django superadmin portal lives under [`portal/`](../portal).
+
+```bash
+cd portal
+python manage.py runserver 127.0.0.1:8090
+python manage.py check
+```
+
 ## Supported commands
 
 ```bash

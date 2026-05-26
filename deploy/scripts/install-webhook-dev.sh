@@ -116,7 +116,8 @@ write_env_template_if_missing() {
   cat > "${env_file}" <<'EOF'
 APP_ENV=dev
 LOG_LEVEL=INFO
-DATABASE_URL=postgresql://rob_dev_app:replace@127.0.0.1:5432/rob_dev
+DATABASE_URL=postgresql://rob_dev_webhook:replace@127.0.0.1:5432/rob_dev
+MIGRATION_DATABASE_URL=postgresql://rob_dev_migrator:replace@127.0.0.1:5432/rob_dev
 
 # Webhook server only. Do not add DISCORD_TOKEN on this host.
 THRONE_WEBHOOK_HOST=127.0.0.1

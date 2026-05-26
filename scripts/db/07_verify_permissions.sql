@@ -8,6 +8,7 @@ DECLARE
     migrator_role text;
     bot_role text;
     webhook_role text;
+    portal_role text;
     missing_count integer;
     table_owner_violations integer;
     runtime_owner_violations integer;
@@ -23,6 +24,7 @@ BEGIN
     migrator_role := role_prefix || '_migrator';
     bot_role := role_prefix || '_bot';
     webhook_role := role_prefix || '_webhook';
+    portal_role := role_prefix || '_portal';
 
     -- Required roles must exist and be login-capable.
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = migrator_role AND rolcanlogin) THEN
@@ -34,6 +36,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = webhook_role AND rolcanlogin) THEN
         RAISE EXCEPTION 'Missing login role: %', webhook_role;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = portal_role AND rolcanlogin) THEN
+        RAISE EXCEPTION 'Missing login role: %', portal_role;
+    END IF;
 
     -- Required connect grants.
     IF NOT has_database_privilege(migrator_role, db_name, 'CONNECT') THEN
@@ -44,6 +49,9 @@ BEGIN
     END IF;
     IF NOT has_database_privilege(webhook_role, db_name, 'CONNECT') THEN
         RAISE EXCEPTION 'Role % is missing CONNECT on %', webhook_role, db_name;
+    END IF;
+    IF NOT has_database_privilege(portal_role, db_name, 'CONNECT') THEN
+        RAISE EXCEPTION 'Role % is missing CONNECT on %', portal_role, db_name;
     END IF;
 
     -- Required tables must exist.
@@ -63,7 +71,8 @@ BEGIN
             ('send_requests'),
             ('sends'),
             ('subs'),
-            ('throne_creators')
+            ('throne_creators'),
+            ('portal_audit_log')
         ) required(table_name)
         WHERE to_regclass(format('public.%I', table_name)) IS NULL
     ) missing;
@@ -86,7 +95,8 @@ BEGIN
             ('006_send_request_resolution_and_report_channel'),
             ('007_inactivity_role_id'),
             ('008_public_leaderboards'),
-            ('009_domme_public_display_names')
+            ('009_domme_public_display_names'),
+            ('010_portal_audit_log')
         ) required(version)
         WHERE NOT EXISTS (
             SELECT 1
@@ -108,7 +118,7 @@ BEGIN
     INTO runtime_owner_violations
     FROM pg_tables
     WHERE schemaname = 'public'
-      AND tableowner IN (bot_role, webhook_role);
+      AND tableowner IN (bot_role, webhook_role, portal_role);
     IF runtime_owner_violations > 0 THEN
         RAISE EXCEPTION 'Runtime roles own public tables. Ownership must remain with migrator.';
     END IF;
@@ -126,6 +136,11 @@ BEGIN
     -- Webhook should not hold DELETE on sends.
     IF has_table_privilege(webhook_role, 'public.sends', 'DELETE') THEN
         RAISE EXCEPTION 'Role % should not have DELETE on public.sends', webhook_role;
+    END IF;
+
+    -- Portal should not hold DELETE on sends.
+    IF has_table_privilege(portal_role, 'public.sends', 'DELETE') THEN
+        RAISE EXCEPTION 'Role % should not have DELETE on public.sends', portal_role;
     END IF;
 END $$;
 

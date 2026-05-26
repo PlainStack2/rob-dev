@@ -34,6 +34,13 @@ END $$;
 
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rob_dev_portal') THEN
+        CREATE ROLE rob_dev_portal LOGIN PASSWORD '<replace_me>';
+    END IF;
+END $$;
+
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rob_prod_migrator') THEN
         CREATE ROLE rob_prod_migrator LOGIN PASSWORD '<replace_me>';
     END IF;
@@ -50,6 +57,13 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rob_prod_webhook') THEN
         CREATE ROLE rob_prod_webhook LOGIN PASSWORD '<replace_me>';
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rob_prod_portal') THEN
+        CREATE ROLE rob_prod_portal LOGIN PASSWORD '<replace_me>';
     END IF;
 END $$;
 

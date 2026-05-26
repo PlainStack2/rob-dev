@@ -1,0 +1,63 @@
+{% extends "rob_admin/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>System Health</h2>
+  <div class="row">
+    {% for status in status_rows %}
+      {% if status.health == "Healthy" %}
+      <span class="badge healthy">{{ status.name }} · {{ status.active_state }}</span>
+      {% elif status.health == "Warning" %}
+      <span class="badge warning">{{ status.name }} · {{ status.active_state }}</span>
+      {% elif status.health == "Error" %}
+      <span class="badge error">{{ status.name }} · {{ status.active_state }}</span>
+      {% else %}
+      <span class="badge unknown">{{ status.name }} · {{ status.active_state }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p class="muted">Bot ops bridge: {{ bot_ops_health.health }} ({{ bot_ops_health.details }})</p>
+</div>
+
+<div class="card">
+  <h2>Database Metrics</h2>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Total Dom/mes</td><td>{{ metrics.dommes }}</td></tr>
+    <tr><td>Total Subs</td><td>{{ metrics.subs }}</td></tr>
+    <tr><td>Total Sends</td><td>{{ metrics.sends }}</td></tr>
+    <tr><td>Pending Sends</td><td>{{ metrics.pending_sends }}</td></tr>
+    <tr><td>Failed Sends</td><td>{{ metrics.failed_sends }}</td></tr>
+    <tr><td>Queued Maintenance Sends</td><td>{{ metrics.queued_maintenance_sends }}</td></tr>
+    <tr><td>Public Leaderboards</td><td>{{ metrics.public_leaderboards }}</td></tr>
+    <tr><td>Latest Migration</td><td>{{ latest_migration }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Recent Failed Sends</h2>
+  {% if recent_failed_sends %}
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Guild</th>
+      <th>Dom/me</th>
+      <th>Amount</th>
+      <th>Status</th>
+      <th>Created</th>
+    </tr>
+    {% for row in recent_failed_sends %}
+    <tr>
+      <td>{{ row.id }}</td>
+      <td>{{ row.guild_id }}</td>
+      <td>{{ row.domme_user_id }}</td>
+      <td>{{ row.amount_cents }}</td>
+      <td>{{ row.discord_post_status }}</td>
+      <td>{{ row.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No failed sends found.</p>
+  {% endif %}
+</div>
+{% endblock %}
