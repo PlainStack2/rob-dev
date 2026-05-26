@@ -77,7 +77,7 @@ jobs:
       - name: Guardrail confirmation
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.confirmation }}" != "APPLY_ROB_DB_CHANGES" ]]; then
+          if [[ "${{ github.event.inputs.confirmation }}" != "APPLY_ROB_DB_CHANGES" ]]; then
             echo "Confirmation mismatch. Aborting."
             exit 1
           fi
