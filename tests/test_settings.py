@@ -16,6 +16,7 @@ def test_load_base_settings_only_requires_database(monkeypatch):
     assert settings.rob_ops_port == 8811
     assert settings.inactivity_enabled_default is False
     assert settings.inactivity_loop_minutes == 60
+    assert settings.rob_public_base_url == "https://rob-dev.barecoding.com"
 
 
 def test_load_bot_settings_requires_discord_token(monkeypatch):
@@ -63,6 +64,7 @@ def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch
     monkeypatch.setenv("THRONE_TEST_GIFTER_USERNAMES", "marie_123, test_sender ")
     monkeypatch.setenv("THRONE_TEST_SEND_LEADERBOARD_OWNER_USER_ID", "42")
     monkeypatch.setenv("LEADERBOARD_LIMIT", "15")
+    monkeypatch.setenv("ROB_PUBLIC_BASE_URL", "https://example.com")
 
     settings = load_base_settings()
 
@@ -72,3 +74,4 @@ def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch
     assert settings.throne_test_gifter_usernames == ("marie_123", "test_sender")
     assert settings.throne_test_send_leaderboard_owner_user_id == 42
     assert settings.leaderboard_limit == 15
+    assert settings.rob_public_base_url == "https://example.com"
