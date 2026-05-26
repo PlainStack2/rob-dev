@@ -141,6 +141,7 @@ cd portal
 python -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
+DJANGO_SETTINGS_MODULE=rob_portal.settings .venv/bin/python manage.py migrate
 DJANGO_SETTINGS_MODULE=rob_portal.settings .venv/bin/python manage.py runserver 127.0.0.1:8090
 ```
 
