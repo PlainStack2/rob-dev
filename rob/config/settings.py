@@ -22,6 +22,7 @@ class BaseSettings:
     leaderboard_limit: int
     inactivity_enabled_default: bool
     inactivity_loop_minutes: int
+    inactivity_new_member_grace_days: int
     inactivity_assignment_grace_days: int
     inactivity_bootstrap_grace_days: int
     inactivity_final_notice_days: int
@@ -133,6 +134,7 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         leaderboard_limit=_env_int("LEADERBOARD_LIMIT", 10, minimum=1),
         inactivity_enabled_default=_env_bool("INACTIVITY_ENABLED_DEFAULT", False),
         inactivity_loop_minutes=_env_int("INACTIVITY_LOOP_MINUTES", 60, minimum=1),
+        inactivity_new_member_grace_days=_env_int("INACTIVITY_NEW_MEMBER_GRACE_DAYS", 7, minimum=1),
         inactivity_assignment_grace_days=_env_int("INACTIVITY_ASSIGNMENT_GRACE_DAYS", 14, minimum=1),
         inactivity_bootstrap_grace_days=_env_int("INACTIVITY_BOOTSTRAP_GRACE_DAYS", 21, minimum=1),
         inactivity_final_notice_days=_env_int("INACTIVITY_FINAL_NOTICE_DAYS", 7, minimum=1),
@@ -157,6 +159,7 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         leaderboard_limit=base.leaderboard_limit,
         inactivity_enabled_default=base.inactivity_enabled_default,
         inactivity_loop_minutes=base.inactivity_loop_minutes,
+        inactivity_new_member_grace_days=base.inactivity_new_member_grace_days,
         inactivity_assignment_grace_days=base.inactivity_assignment_grace_days,
         inactivity_bootstrap_grace_days=base.inactivity_bootstrap_grace_days,
         inactivity_final_notice_days=base.inactivity_final_notice_days,

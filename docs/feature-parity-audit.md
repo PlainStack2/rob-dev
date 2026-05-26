@@ -64,3 +64,10 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 - Added tokenized public leaderboard HTTP route (`/public/leaderboard/{public_token}`) on webhook service.
 - Added backend `rob leaderboard public ...` commands for create/list/enable/disable/rotate-token.
 - Public page uses black background, red Times New Roman, no emojis, no images, and aggregate-only data.
+
+
+## Inactivity timing
+- New inactive members now use a 7-day no-warning grace period (`INACTIVITY_NEW_MEMBER_GRACE_DAYS`, default `7`).
+- First warning sends at ~day 7 and includes Discord relative/full removal timestamps (`<t:...:R> / <t:...:f>`).
+- Final warning sends at ~day 14 (`INACTIVITY_FINAL_NOTICE_DAYS` before removal) and clarifies removal is not a ban.
+- Removal runs at ~day 21 of inactivity by default.
