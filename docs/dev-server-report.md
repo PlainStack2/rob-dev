@@ -153,8 +153,8 @@ Bot env must include `DISCORD_TOKEN`.
 - The database is `rob_dev`.
 - PostgreSQL tables already exist through the migration foundation branch.
 - Legacy data has already been imported or is importable with the legacy migration tooling.
-- App servers use the application user such as `rob_dev_app`.
-- Migrations and imports use the higher-privilege user such as `rob_migration`.
+- Bot/webhook app servers use runtime users such as `rob_dev_bot` and `rob_dev_webhook`.
+- Migrations and schema ownership use `rob_dev_migrator`.
 
 ## 7. What Still Needs To Be Done Manually
 
