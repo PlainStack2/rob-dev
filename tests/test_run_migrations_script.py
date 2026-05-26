@@ -46,14 +46,23 @@ def test_resolve_migration_database_url_prefers_env(monkeypatch):
 
 def test_resolve_migration_database_url_falls_back_to_database_url(monkeypatch):
     monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("PORTAL_MIGRATION_DATABASE_URL", raising=False)
     settings = SimpleNamespace(database_url="postgresql://runtime/db")
     assert run_migrations.resolve_migration_database_url(settings) == "postgresql://runtime/db"
 
 
 def test_resolve_migration_database_url_uses_runtime_env_without_settings(monkeypatch):
     monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("PORTAL_MIGRATION_DATABASE_URL", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql://runtime/db")
     assert run_migrations.resolve_migration_database_url(None) == "postgresql://runtime/db"
+
+
+def test_resolve_migration_database_url_supports_portal_migration_env(monkeypatch):
+    monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
+    monkeypatch.setenv("PORTAL_MIGRATION_DATABASE_URL", "postgresql://portal-migrator/db")
+    settings = SimpleNamespace(database_url="postgresql://runtime/db")
+    assert run_migrations.resolve_migration_database_url(settings) == "postgresql://portal-migrator/db"
 
 
 def test_run_migrations_uses_migration_database_url_when_set(monkeypatch, tmp_path):

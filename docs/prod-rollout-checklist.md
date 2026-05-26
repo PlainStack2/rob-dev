@@ -3,7 +3,7 @@
 ## 1) Create production roles
 
 - Run `scripts/db/01_create_roles.sql` as provider admin role.
-- Confirm `rob_prod_migrator`, `rob_prod_bot`, and `rob_prod_webhook` exist and can login.
+- Confirm `rob_prod_migrator`, `rob_prod_bot`, `rob_prod_webhook`, and `rob_prod_portal` exist and can login.
 
 ## 2) Create `rob_prod`
 
@@ -33,6 +33,7 @@
 
 - Bot runtime `DATABASE_URL` must use `rob_prod_bot`.
 - Webhook runtime `DATABASE_URL` must use `rob_prod_webhook`.
+- Portal runtime `PORTAL_DATABASE_URL` must use `rob_prod_portal`.
 - Migration tasks must use `MIGRATION_DATABASE_URL` with `rob_prod_migrator`.
 
 ## 7) Run DB verification
@@ -51,24 +52,29 @@
 - Start/restart bot process with prod env.
 - Confirm slash command sync and DB connectivity.
 
-## 10) Verify Discord commands
+## 10) Start portal service
+
+- Start/restart `rob-portal-prod.service` (or the environment-specific portal service name).
+- Confirm `/portal/login/` and Discord OAuth callback are reachable.
+
+## 11) Verify Discord commands
 
 - Registration commands
 - Send request flow
 - Leaderboard stats flow
 - Counting flow
 
-## 11) Verify Throne webhook ingestion
+## 12) Verify Throne webhook ingestion
 
 - Send a controlled test event.
 - Confirm event appears in logs and expected tables.
 
-## 12) Verify public leaderboard token flow (if enabled)
+## 13) Verify public leaderboard token flow (if enabled)
 
 - Confirm `public_leaderboards` rows resolve correctly.
 - Confirm no `leaderboard_messages` legacy table usage remains.
 
-## 13) Verify logs and alerts
+## 14) Verify logs and alerts
 
 - Bot logs clean of DB permission errors.
 - Webhook logs clean of DB permission errors.

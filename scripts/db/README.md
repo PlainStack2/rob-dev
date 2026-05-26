@@ -2,6 +2,13 @@
 
 These scripts are for manual database administration (dev/prod separation, roles, grants, ownership, and cleanup). They are intentionally explicit and do **not** run automatically from app startup.
 
+Role/grant scripts include dedicated runtime users for:
+
+- bot (`*_bot`)
+- webhook (`*_webhook`)
+- portal (`*_portal`)
+- migrations (`*_migrator`)
+
 ## Script order
 
 1. `00_audit_current_db.sql`

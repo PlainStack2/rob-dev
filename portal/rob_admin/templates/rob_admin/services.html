@@ -1,0 +1,41 @@
+{% extends "rob_admin/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Allowlisted Services</h2>
+  <table>
+    <tr>
+      <th>Service</th>
+      <th>Status</th>
+      <th>Sub-state</th>
+      <th>Started</th>
+      <th>Unit</th>
+      <th>Commit</th>
+      <th>Notes</th>
+    </tr>
+    {% for status in statuses %}
+    <tr>
+      <td>{{ status.name }}</td>
+      <td>
+        {% if status.health == "Healthy" %}
+        <span class="badge healthy">{{ status.active_state }}</span>
+        {% elif status.health == "Warning" %}
+        <span class="badge warning">{{ status.active_state }}</span>
+        {% elif status.health == "Error" %}
+        <span class="badge error">{{ status.active_state }}</span>
+        {% else %}
+        <span class="badge unknown">{{ status.active_state }}</span>
+        {% endif %}
+      </td>
+      <td>{{ status.sub_state }}</td>
+      <td>{{ status.start_timestamp|default:"-" }}</td>
+      <td>{{ status.fragment_path|default:"-" }}</td>
+      <td>{{ status.git_commit|default:"-" }}</td>
+      <td>{{ status.summary|default:"-" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if not service_actions_enabled %}
+  <p class="muted">Service restart actions are disabled by default (ROB_PORTAL_ENABLE_SERVICE_ACTIONS=false).</p>
+  {% endif %}
+</div>
+{% endblock %}

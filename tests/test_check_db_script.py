@@ -164,3 +164,4 @@ def test_check_db_reports_009_recording_repair_when_columns_exist(monkeypatch: p
 def test_repo_migrations_include_009_domme_public_display_names():
     expected = {path.stem for path in check_db.MIGRATIONS_DIR.glob("*.sql")}
     assert "009_domme_public_display_names" in expected
+    assert "010_portal_audit_log" in expected

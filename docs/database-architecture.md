@@ -13,17 +13,21 @@ Do not use `defaultdb` or `_dodb` for Rob application data.
 - Dev migration owner: `rob_dev_migrator`
 - Dev runtime bot: `rob_dev_bot`
 - Dev runtime webhook: `rob_dev_webhook`
+- Dev runtime portal: `rob_dev_portal`
 - Prod migration owner: `rob_prod_migrator`
 - Prod runtime bot: `rob_prod_bot`
 - Prod runtime webhook: `rob_prod_webhook`
+- Prod runtime portal: `rob_prod_portal`
 
 ## Service to DB user mapping
 
 - Bot service (dev): `DATABASE_URL -> rob_dev_bot@rob_dev`
 - Webhook service (dev): `DATABASE_URL -> rob_dev_webhook@rob_dev`
+- Portal service (dev): `PORTAL_DATABASE_URL -> rob_dev_portal@rob_dev`
 - Migrations (dev): `MIGRATION_DATABASE_URL -> rob_dev_migrator@rob_dev`
 - Bot service (prod): `DATABASE_URL -> rob_prod_bot@rob_prod`
 - Webhook service (prod): `DATABASE_URL -> rob_prod_webhook@rob_prod`
+- Portal service (prod): `PORTAL_DATABASE_URL -> rob_prod_portal@rob_prod`
 - Migrations (prod): `MIGRATION_DATABASE_URL -> rob_prod_migrator@rob_prod`
 
 ## Role responsibilities
@@ -39,6 +43,10 @@ Do not use `defaultdb` or `_dodb` for Rob application data.
 - `*_webhook`:
   - Runtime read/write only for webhook ingestion and related reads.
   - Narrower grants than bot (no destructive deletes by default).
+  - Must not own tables/sequences.
+- `*_portal`:
+  - Runtime superadmin portal role.
+  - Read-heavy access plus scoped writes for admin workflows.
   - Must not own tables/sequences.
 
 ## Ownership and privileges model

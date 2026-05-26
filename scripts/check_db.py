@@ -75,6 +75,22 @@ WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "sends": ("SELECT", "INSERT", "UPDATE"),
 }
 
+PORTAL_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "schema_migrations": ("SELECT",),
+    "sends": ("SELECT",),
+    "leaderboard_message": ("SELECT",),
+    "counting_state": ("SELECT",),
+    "guild_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "dommes": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "subs": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "send_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "throne_creators": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "public_leaderboards": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "bot_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "blacklist": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "portal_audit_log": ("SELECT", "INSERT"),
+}
+
 
 async def _assert_table_columns(connection, table: str, required_columns: set[str]) -> None:
     rows = await connection.fetch(
@@ -122,6 +138,8 @@ async def _dommes_has_public_display_columns(connection) -> bool:
 def _runtime_profile(current_user: str) -> str:
     if current_user.endswith("_webhook"):
         return "webhook"
+    if current_user.endswith("_portal"):
+        return "portal"
     if current_user.endswith("_bot"):
         return "bot"
     return "generic"
@@ -136,7 +154,12 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
         )
 
     profile = _runtime_profile(current_user)
-    required = BOT_TABLE_PERMISSIONS if profile in {"bot", "generic"} else WEBHOOK_TABLE_PERMISSIONS
+    if profile in {"bot", "generic"}:
+        required = BOT_TABLE_PERMISSIONS
+    elif profile == "webhook":
+        required = WEBHOOK_TABLE_PERMISSIONS
+    else:
+        required = PORTAL_TABLE_PERMISSIONS
     missing: list[str] = []
 
     for table_name, privileges in required.items():
@@ -149,15 +172,29 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
             if not has_privilege:
                 missing.append(f"{table_name}:{privilege}")
 
-    sequence_name = "public.sends_id_seq"
-    for privilege in ("USAGE", "SELECT", "UPDATE"):
-        has_privilege = await connection.fetchval(
-            "SELECT has_sequence_privilege(current_user, $1, $2)",
-            sequence_name,
-            privilege,
+    sequence_checks = ("USAGE", "SELECT", "UPDATE")
+    sequence_names = (
+        ("public.sends_id_seq",)
+        if profile == "webhook"
+        else (
+            "public.sends_id_seq",
+            "public.dommes_id_seq",
+            "public.subs_id_seq",
+            "public.send_requests_id_seq",
+            "public.public_leaderboards_id_seq",
+            "public.throne_creators_id_seq",
+            "public.portal_audit_log_id_seq",
         )
-        if not has_privilege:
-            missing.append(f"sends_id_seq:{privilege}")
+    )
+    for sequence_name in sequence_names:
+        for privilege in sequence_checks:
+            has_privilege = await connection.fetchval(
+                "SELECT has_sequence_privilege(current_user, $1, $2)",
+                sequence_name,
+                privilege,
+            )
+            if not has_privilege:
+                missing.append(f"{sequence_name}:{privilege}")
 
     if missing:
         raise RuntimeError(
@@ -165,13 +202,13 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
             f"'{current_user}'. Missing privileges: {', '.join(missing)}"
         )
 
-    if profile == "webhook":
+    if profile in {"webhook", "portal"}:
         has_delete = await connection.fetchval(
             "SELECT has_table_privilege(current_user, 'public.sends', 'DELETE')",
         )
         if has_delete:
             raise RuntimeError(
-                "Webhook runtime user has DELETE on public.sends, which is broader than intended."
+                f"{profile} runtime user has DELETE on public.sends, which is broader than intended."
             )
 
 
