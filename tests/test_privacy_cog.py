@@ -5,7 +5,7 @@ import asyncio
 import discord
 
 from rob.discord.cogs.privacy import PrivacyCog
-from rob.ui.cards.privacy import PRIVACY_NOTICE_FOOTER, privacy_notice_message
+from rob.ui.cards.privacy import PRIVACY_NOTICE_FOOTER, privacy_notice_message, privacy_notice_messages
 
 EXPECTED_DESCRIPTION = (
     "View Rob's privacy notice, including what information may be collected, stored, and used."
@@ -34,14 +34,28 @@ FORBIDDEN_PHRASES = [
 class _FakeResponse:
     def __init__(self):
         self.messages: list[dict] = []
+        self.deferred = False
 
     async def send_message(self, **kwargs):
         self.messages.append(kwargs)
+
+    async def defer(self, **kwargs):
+        self.deferred = True
+        self.messages.append(kwargs)
+
+
+class _FakeFollowup:
+    def __init__(self):
+        self.messages: list[dict] = []
+
+    async def send(self, *args, **kwargs):
+        self.messages.append({"args": args, "kwargs": kwargs})
 
 
 class _FakeInteraction:
     def __init__(self):
         self.response = _FakeResponse()
+        self.followup = _FakeFollowup()
 
 
 def _rendered_text_from_view(view: discord.ui.LayoutView) -> str:
@@ -58,17 +72,21 @@ def test_privacy_command_metadata_matches_expected():
     assert command.description == EXPECTED_DESCRIPTION
 
 
-def test_privacy_command_responds_ephemeral_with_components_v2_message():
+def test_privacy_command_defers_ephemeral_and_sends_ephemeral_followups():
     interaction = _FakeInteraction()
     cog = PrivacyCog(bot=object())  # type: ignore[arg-type]
 
     asyncio.run(PrivacyCog.privacy.callback(cog, interaction))
 
-    payload = interaction.response.messages[0]
-    assert payload["ephemeral"] is True
-    assert "view" in payload
-    assert "embed" not in payload
-    assert "embeds" not in payload
+    assert interaction.response.deferred is True
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert len(interaction.followup.messages) == 3
+    for sent in interaction.followup.messages:
+        kwargs = sent["kwargs"]
+        assert kwargs["ephemeral"] is True
+        assert "view" in kwargs
+        assert "embed" not in kwargs
+        assert "embeds" not in kwargs
 
 
 def test_privacy_notice_message_has_seven_containers_with_required_footer_and_sections():
@@ -97,6 +115,23 @@ def test_privacy_notice_wording_avoids_casual_phrases():
     all_text = _rendered_text_from_view(privacy_notice_message().send_kwargs()["view"])
     for forbidden in FORBIDDEN_PHRASES:
         assert forbidden not in all_text
+
+
+def test_privacy_notice_messages_split_sections_and_stay_under_4000_text_chars():
+    messages = privacy_notice_messages()
+    assert len(messages) == 3
+
+    section_text = ""
+    for message in messages:
+        payload = message.send_kwargs()
+        view = payload["view"]
+        section_text += _rendered_text_from_view(view)
+        assert len(_rendered_text_from_view(view)) < 4000
+        assert "embed" not in payload
+        assert "embeds" not in payload
+
+    for section in EXPECTED_SECTIONS:
+        assert section in section_text
 
 
 def test_privacy_command_not_role_restricted():
