@@ -55,6 +55,7 @@ rob inactivity off --guild-id <guild_id>
 ## DB build vs data migration
 
 - DB schema build is manual SQL in `scripts/db/build/` (run as `doadmin`).
+- Runtime grants are environment-specific SQL in `scripts/db/grants/`.
 - SQLite -> PostgreSQL data migration tooling is in `scripts/data_migration/`.
 - Deploy scripts do not run schema build SQL.
 
@@ -62,4 +63,6 @@ rob inactivity off --guild-id <guild_id>
 
 Deploy scripts run `scripts/check_db.py` and stop on failure with:
 
-> Database check failed. Apply the required DB build scripts manually in pgAdmin4 / psql, then rerun deploy.
+> Database check failed.  
+> This database has not been built for Rob v2 yet, or runtime grants are incomplete.  
+> Run `001_core_schema.sql`, `002_indexes.sql`, and the correct runtime grants SQL, then rerun deploy.

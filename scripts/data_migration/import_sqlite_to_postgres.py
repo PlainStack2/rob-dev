@@ -197,6 +197,16 @@ def _public_source_rows(connection: sqlite3.Connection, table: str) -> list[dict
     return _fetch_rows(connection, table)
 
 
+def _sorted_rows_by_id(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def sort_key(row: dict[str, Any]) -> tuple[int, int]:
+        row_id = _as_int(_row_value(row, "id"))
+        if row_id is None:
+            return (1, 0)
+        return (0, row_id)
+
+    return sorted(rows, key=sort_key)
+
+
 def _build_payload(
     *,
     sqlite_path: Path,
@@ -215,6 +225,22 @@ def _build_payload(
     bot_settings: dict[str, dict[str, Any]] = {}
     count_state: dict[int, dict[str, Any]] = {}
     inactive_users: dict[tuple[int, int], dict[str, Any]] = {}
+    report_counts: dict[str, int] = {
+        "throne_creators_total": len(source_rows["throne_creators"]),
+        "throne_creators_missing_discord_user_id": 0,
+        "throne_creators_without_event_domme": 0,
+        "throne_creator_conflicts": 0,
+        "event_sends_skipped_missing_domme": 0,
+        "send_requests_total": len(source_rows["send_requests"]),
+        "send_requests_accepted": 0,
+        "send_requests_inserted": 0,
+        "send_requests_skipped_duplicate": 0,
+        "send_requests_skipped_missing_domme": 0,
+        "wishlist_rows_ignored": (
+            0 if include_wishlist_cache else len(source_rows["throne_wishlist_items"])
+        ),
+    }
+    warnings: list[str] = []
 
     domme_id_lookup: dict[tuple[int, int], int] = {}
     sub_id_lookup: dict[tuple[int, int], int] = {}
@@ -276,7 +302,7 @@ def _build_payload(
         if creator_id:
             creator_id_to_user[creator_id] = discord_user_id
 
-    for row in source_rows["throne_creators"]:
+    for row in _sorted_rows_by_id(source_rows["throne_creators"]):
         guild_id = _resolve_guild_id(row, default_guild_id=default_guild_id)
         discord_user_id = _as_int(
             _row_value(row, "discord_user_id", "user_id", "domme_user_id")
@@ -286,7 +312,10 @@ def _build_payload(
             if domme_fk is not None:
                 discord_user_id = domme_id_lookup.get((guild_id, domme_fk))
         if discord_user_id is None:
+            report_counts["throne_creators_missing_discord_user_id"] += 1
             continue
+        if (guild_id, discord_user_id) not in dommes:
+            report_counts["throne_creators_without_event_domme"] += 1
         ensure_user(guild_id, discord_user_id)
         domme_key = (guild_id, discord_user_id)
         base = dommes.get(
@@ -303,12 +332,38 @@ def _build_payload(
             },
         )
         creator_id = _as_text(_row_value(row, "throne_creator_id", "creator_id"))
-        if creator_id:
+        existing_creator_id = _as_text(base.get("throne_creator_id"))
+        existing_handle = _as_text(base.get("throne_handle"))
+        incoming_handle = _as_text(_row_value(row, "throne_handle", "handle"))
+
+        if creator_id and creator_id in creator_id_to_user and creator_id_to_user[creator_id] != discord_user_id:
+            report_counts["throne_creator_conflicts"] += 1
+            warnings.append(
+                f"Creator ID {creator_id} mapped to multiple users "
+                f"({creator_id_to_user[creator_id]} and {discord_user_id}) in guild {guild_id}; keeping first mapping."
+            )
+        elif creator_id:
             creator_id_to_user[creator_id] = discord_user_id
+
+        if existing_creator_id and creator_id and existing_creator_id != creator_id:
+            report_counts["throne_creator_conflicts"] += 1
+            warnings.append(
+                f"Dom/me {discord_user_id} in guild {guild_id} has multiple creator IDs "
+                f"({existing_creator_id}, {creator_id}); keeping {existing_creator_id}."
+            )
+            creator_id = existing_creator_id
+
+        if existing_handle and incoming_handle and existing_handle.lower() != incoming_handle.lower():
+            report_counts["throne_creator_conflicts"] += 1
+            warnings.append(
+                f"Dom/me {discord_user_id} in guild {guild_id} has multiple handles "
+                f"({existing_handle}, {incoming_handle}); keeping {existing_handle}."
+            )
+            incoming_handle = existing_handle
+
         base.update(
             {
-                "throne_handle": _as_text(_row_value(row, "throne_handle", "handle"))
-                or base.get("throne_handle"),
+                "throne_handle": incoming_handle or base.get("throne_handle"),
                 "throne_creator_id": creator_id or base.get("throne_creator_id"),
                 "hide_own_purchases": _as_bool(_row_value(row, "hide_own_purchases"))
                 if _row_value(row, "hide_own_purchases") is not None
@@ -456,6 +511,7 @@ def _build_payload(
         if domme_user_id is None and creator_id is not None:
             domme_user_id = creator_id_to_user.get(creator_id)
         if domme_user_id is None:
+            report_counts["event_sends_skipped_missing_domme"] += 1
             continue
 
         ensure_user(guild_id, domme_user_id)
@@ -517,9 +573,11 @@ def _build_payload(
         status = (_as_text(_row_value(row, "status")) or "").lower()
         if status not in {"accepted", "approved", "resolved"}:
             continue
+        report_counts["send_requests_accepted"] += 1
         guild_id = _resolve_guild_id(row, default_guild_id=default_guild_id)
         domme_user_id = _as_int(_row_value(row, "domme_user_id", "recipient_user_id"))
         if domme_user_id is None:
+            report_counts["send_requests_skipped_missing_domme"] += 1
             continue
         ensure_user(guild_id, domme_user_id)
         sub_user_id = _as_int(_row_value(row, "sub_user_id"))
@@ -547,9 +605,11 @@ def _build_payload(
         )
         signature = _send_signature(candidate)
         if signature in import_signatures:
+            report_counts["send_requests_skipped_duplicate"] += 1
             continue
         sends.append(candidate)
         import_signatures.add(signature)
+        report_counts["send_requests_inserted"] += 1
 
     vib_leaderboard_rows: list[dict[str, Any]] = []
     for row in source_rows["event_messages"]:
@@ -585,6 +645,8 @@ def _build_payload(
         ],
         "the_count": list(count_state.values()),
         "inactive_users": list(inactive_users.values()),
+        "report_counts": report_counts,
+        "warnings": warnings,
     }
 
 
@@ -610,6 +672,32 @@ def _print_report(report: dict[str, Any]) -> None:
         print(f"- target.{key}: {report['target_counts'][key]}")
     print(f"- send_total_usd_source: {report['event_sends_total_usd']:.2f}")
     print(f"- send_total_usd_target: {report['sends_total_usd']:.2f}")
+    import_counts = report["import_counts"]
+    print(
+        "- send_requests: "
+        f"found={import_counts['send_requests_total']}, "
+        f"accepted={import_counts['send_requests_accepted']}, "
+        f"inserted_into_sends={import_counts['send_requests_inserted']}, "
+        f"skipped_duplicate={import_counts['send_requests_skipped_duplicate']}, "
+        f"skipped_missing_domme={import_counts['send_requests_skipped_missing_domme']}"
+    )
+    print(
+        "- throne_creators_merge: "
+        f"total={import_counts['throne_creators_total']}, "
+        f"without_event_domme={import_counts['throne_creators_without_event_domme']}, "
+        f"missing_discord_user_id={import_counts['throne_creators_missing_discord_user_id']}, "
+        f"conflicts={import_counts['throne_creator_conflicts']}"
+    )
+    print(
+        "- event_sends_skipped_missing_domme: "
+        f"{import_counts['event_sends_skipped_missing_domme']}"
+    )
+    print(f"- throne_wishlist_items_ignored: {import_counts['wishlist_rows_ignored']}")
+    warnings = report.get("warnings", [])
+    if warnings:
+        print("- warnings:")
+        for warning in warnings[:20]:
+            print(f"  - {warning}")
 
 
 def _should_block_prod_truncate(database_url: str) -> bool:
@@ -1081,6 +1169,8 @@ async def main_async(args: argparse.Namespace) -> int:
         },
         "event_sends_total_usd": float(inspection["event_sends_total_usd"]),
         "sends_total_usd": sends_total_usd,
+        "import_counts": payload.get("report_counts", {}),
+        "warnings": payload.get("warnings", []),
     }
 
     if not args.inspect_only and not args.dry_run:

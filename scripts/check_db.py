@@ -7,6 +7,10 @@ from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 
 DB_BUILD_DIR = Path(__file__).resolve().parent / "db" / "build"
+REQUIRED_DB_BUILD_VERSIONS = (
+    "001_core_schema",
+    "002_indexes",
+)
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
     "db_build_version": {"version", "applied_at", "notes"},
@@ -315,11 +319,22 @@ async def main() -> None:
 
             rows = await connection.fetch("SELECT version FROM db_build_version")
             applied = {str(row["version"]) for row in rows}
-            expected = {path.stem for path in sorted(DB_BUILD_DIR.glob("*.sql"))}
-            if not expected:
-                raise RuntimeError("No DB build scripts found under scripts/db/build.")
+            required_scripts = {
+                version: DB_BUILD_DIR / f"{version}.sql"
+                for version in REQUIRED_DB_BUILD_VERSIONS
+            }
+            missing_script_files = [
+                version
+                for version, script_path in required_scripts.items()
+                if not script_path.exists()
+            ]
+            if missing_script_files:
+                raise RuntimeError(
+                    "Required DB build script file is missing: "
+                    + ", ".join(missing_script_files)
+                )
 
-            missing_versions = sorted(expected - applied)
+            missing_versions = sorted(set(REQUIRED_DB_BUILD_VERSIONS) - applied)
             if missing_versions:
                 if len(missing_versions) == 1:
                     raise RuntimeError(

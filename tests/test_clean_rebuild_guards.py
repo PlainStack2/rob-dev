@@ -166,6 +166,10 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "001_core_schema.sql").exists()
     assert (build_dir / "002_indexes.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
+    grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
+    assert (grants_dir / "dev_rob_bot.sql").exists()
+    assert (grants_dir / "prod_rob_bot.sql").exists()
+    assert (grants_dir / "prod_rob_webhook.sql").exists()
     assert not (REPO_ROOT / "rob" / "database" / "migrations").exists()
 
 
@@ -197,6 +201,14 @@ def test_runtime_grants_template_does_not_grant_schema_create_to_runtime_users()
     assert "GRANT CREATE ON SCHEMA public TO dev_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_webhook" not in grants
+
+
+def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
+    grants = (
+        REPO_ROOT / "scripts" / "db" / "grants" / "prod_rob_webhook.sql"
+    ).read_text(encoding="utf-8")
+    for forbidden in ("GRANT CREATE", "GRANT ALTER", "GRANT DROP", "GRANT TRUNCATE"):
+        assert forbidden not in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():
@@ -241,6 +253,32 @@ def test_importer_maps_dommes_subs_sends_count_and_inactivity(tmp_path: Path):
     assert payload["sends"][0].amount_cents == 1234
     assert payload["the_count"][0]["current_number"] == 777
     assert payload["inactive_users"][0]["initial_notice_sent"] is True
+    assert payload["report_counts"]["send_requests_total"] == 1
+    assert payload["report_counts"]["send_requests_inserted"] == 1
+    assert payload["report_counts"]["wishlist_rows_ignored"] == 1
+
+
+def test_importer_reports_creator_merge_conflicts_and_missing_users(tmp_path: Path):
+    sqlite_path = tmp_path / "legacy.sqlite3"
+    _create_sample_sqlite(sqlite_path)
+    with sqlite3.connect(sqlite_path) as sqlite:
+        sqlite.execute(
+            "INSERT INTO throne_creators (id, guild_id, discord_user_id, throne_handle, throne_creator_id) VALUES (2, 10, 1001, 'dom-alt', 'creator_2')"
+        )
+        sqlite.execute(
+            "INSERT INTO throne_creators (id, guild_id, discord_user_id, throne_handle, throne_creator_id) VALUES (3, 10, NULL, 'missing', 'creator_missing')"
+        )
+        sqlite.commit()
+
+    payload = import_sqlite_to_postgres._build_payload(
+        sqlite_path=sqlite_path,
+        default_guild_id=10,
+        include_wishlist_cache=False,
+    )
+
+    assert payload["report_counts"]["throne_creator_conflicts"] >= 1
+    assert payload["report_counts"]["throne_creators_missing_discord_user_id"] == 1
+    assert payload["warnings"]
 
 
 def test_importer_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

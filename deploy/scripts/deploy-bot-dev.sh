@@ -62,7 +62,12 @@ set +a
 if ! PYTHONPATH=. "${PYTHON_BIN}" -m scripts.check_db; then
   echo
   echo "Database check failed."
-  echo "Apply the required DB build scripts manually in pgAdmin4 / psql, then rerun deploy."
+  echo "This database has not been built for Rob v2 yet, or runtime grants are incomplete."
+  echo "Open pgAdmin4 / psql as doadmin and run:"
+  echo "  1. scripts/db/build/001_core_schema.sql"
+  echo "  2. scripts/db/build/002_indexes.sql"
+  echo "  3. scripts/db/grants/dev_rob_bot.sql (or the correct runtime grants file)"
+  echo "Then rerun deploy."
   exit 1
 fi
 

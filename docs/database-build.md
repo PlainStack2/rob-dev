@@ -15,9 +15,20 @@ Execute as `doadmin` in pgAdmin4 or `psql`:
 
 1. `scripts/db/build/001_core_schema.sql`
 2. `scripts/db/build/002_indexes.sql`
-3. `scripts/db/build/003_runtime_grants_template.sql` (review role/database names first)
+3. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
 
-Each script records itself in `db_build_version`.
+Then apply runtime grants:
+
+- Dev rehearsal: `scripts/db/grants/dev_rob_bot.sql`
+- Prod bot: `scripts/db/grants/prod_rob_bot.sql`
+- Prod webhook: `scripts/db/grants/prod_rob_webhook.sql`
+
+Required `db_build_version` rows are:
+
+- `001_core_schema`
+- `002_indexes`
+
+Runtime grants are environment-specific and are validated by `scripts/check_db.py` from runtime credentials.
 
 ## Target tables
 

@@ -35,6 +35,19 @@ Schema creation/alteration is handled manually by `doadmin` (or provider-equival
 - `the_count`
 - `inactive_users`
 
+## `bot_settings` JSON shape
+
+`bot_settings.value` is JSON and should use stable keys for operational state.  
+For maintenance-related state, prefer:
+
+```json
+{
+  "enabled": true,
+  "message": "Maintenance reason text",
+  "updated_by": 123456789012345678
+}
+```
+
 ## Removed legacy tables/features
 
 The v2 rebuild intentionally removes legacy dependencies from runtime code:
@@ -65,7 +78,7 @@ Preferred production URL base:
 `scripts/check_db.py` validates:
 
 1. required v2 tables/columns
-2. `db_build_version` entries for SQL build scripts in `scripts/db/build/`
+2. required `db_build_version` entries (`001_core_schema`, `002_indexes`)
 3. runtime permission profile for `_bot` and `_webhook` users
 4. no schema `CREATE` privilege for runtime users
 

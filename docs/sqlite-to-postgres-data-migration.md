@@ -68,3 +68,14 @@ python3 -m scripts.data_migration.import_sqlite_to_postgres \
 - `rob_blacklist` -> `bot_users.status='blocked'`
 - `send_requests` -> folded into `sends` only when approved and not duplicated
 - `throne_wishlist_items` -> ignored by default
+
+## Report output notes
+
+Importer output explicitly reports:
+
+- `send_requests`: `found`, `accepted`, `inserted_into_sends`, `skipped_duplicate`, `skipped_missing_domme`
+- `throne_creators_merge`: totals and conflict counts
+- `event_sends_skipped_missing_domme`
+- `throne_wishlist_items_ignored` row count (when wishlist cache is not included)
+
+This avoids silent data-shape handling during rehearsal imports.
