@@ -68,10 +68,23 @@ def _safe_next_path(value: str | None) -> str:
     return value
 
 
+def _user_role(discord_user_id: int | None) -> str:
+    if _is_superadmin(discord_user_id):
+        return "SuperAdmin"
+    if discord_user_id in set(settings.ROB_PORTAL_MODERATOR_USER_IDS):
+        return "Moderator"
+    return "User"
+
+
 def _portal_context(request: HttpRequest, *, title: str) -> dict:
+    discord_id = _discord_id_from_session(request)
+    role = _user_role(discord_id)
     return {
         "title": title,
         "portal_user_display": request.session.get("portal_discord_display_name") or request.user.get_username(),
+        "portal_user_role": role,
+        "portal_is_superadmin": role == "SuperAdmin",
+        "portal_is_moderator": role == "Moderator",
     }
 
 
@@ -260,18 +273,11 @@ def discord_auth_callback(request: HttpRequest) -> HttpResponse:
         or str(identity.get("username") or "").strip()
         or "Unknown User"
     )
-    if not _is_superadmin(discord_id):
-        audit_action(
-            request=None,
-            action="portal_login_denied",
-            target_type="discord_user",
-            target_id=discord_id_raw or "unknown",
-            metadata={"display_name": display_name},
-        )
+    if discord_id is None:
         return render(
             request,
             "rob_admin/forbidden.html",
-            {"title": "Access denied", "message": "This portal is restricted to configured superadmin users only."},
+            {"title": "Access denied", "message": "Discord identity was invalid."},
             status=403,
         )
 
