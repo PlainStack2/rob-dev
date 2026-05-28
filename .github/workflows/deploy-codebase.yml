@@ -1,0 +1,132 @@
+name: Deploy Rob Codebase
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: "Branch, tag, or commit SHA to deploy"
+        required: false
+        default: "main"
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, prod]
+      deploy_bot:
+        description: "Deploy bot service"
+        required: true
+        default: true
+        type: boolean
+      deploy_webhook:
+        description: "Deploy webhook service"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: deploy-rob-codebase-${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+  DEPLOY_REF: ${{ github.event_name == 'push' && github.sha || inputs.deploy_ref }}
+  DEPLOY_BOT: ${{ github.event_name == 'push' && 'true' || inputs.deploy_bot }}
+  DEPLOY_WEBHOOK: ${{ github.event_name == 'push' && 'true' || inputs.deploy_webhook }}
+
+jobs:
+  precheck_codebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: ${{ env.DEPLOY_REF }} }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - run: PYTHONPATH=. python -m compileall apps rob scripts
+      - run: ruff check .
+      - run: PYTHONPATH=. pytest -q
+      - run: |
+          test -f deploy/scripts/deploy-bot.sh
+          test -f deploy/scripts/deploy-webhook.sh
+          test -f deploy/scripts/deploy-bot-dev.sh
+          test -f deploy/scripts/deploy-webhook-dev.sh
+          test -f deploy/scripts/precheck-bot.sh
+          test -f deploy/scripts/precheck-webhook.sh
+          test -f scripts/check_db.py
+
+  bot_server_precheck:
+    if: ${{ env.DEPLOY_BOT == 'true' }}
+    needs: [precheck_codebase]
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - name: Bot precheck over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_HOST || secrets.ROB_DEV_BOT_HOST }}
+          username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_USER || secrets.ROB_DEV_BOT_USER }}
+          key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_SSH_KEY || secrets.ROB_DEV_BOT_SSH_KEY }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT || 22) || (secrets.ROB_DEV_BOT_SSH_PORT || 22) }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-bot.service' || 'rob-bot-dev.service' }}' APP_DIR=/opt/rob-bot/app ./deploy/scripts/precheck-bot.sh
+
+  webhook_server_precheck:
+    if: ${{ env.DEPLOY_WEBHOOK == 'true' }}
+    needs: [precheck_codebase]
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - name: Webhook precheck over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_HOST || secrets.ROB_DEV_WEBHOOK_HOST }}
+          username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_USER || secrets.ROB_DEV_WEBHOOK_USER }}
+          key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_SSH_KEY || secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT || 22) || (secrets.ROB_DEV_WEBHOOK_SSH_PORT || 22) }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-webhook.service' || 'rob-webhook-dev.service' }}' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/precheck-webhook.sh
+
+  deploy_bot:
+    if: ${{ env.DEPLOY_BOT == 'true' }}
+    needs: [precheck_codebase, bot_server_precheck]
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - name: Deploy bot over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_HOST || secrets.ROB_DEV_BOT_HOST }}
+          username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_USER || secrets.ROB_DEV_BOT_USER }}
+          key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_SSH_KEY || secrets.ROB_DEV_BOT_SSH_KEY }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT || 22) || (secrets.ROB_DEV_BOT_SSH_PORT || 22) }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ env.DEPLOY_REF }}' SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-bot.service' || 'rob-bot-dev.service' }}' APP_DIR=/opt/rob-bot/app ./deploy/scripts/deploy-bot.sh
+
+  deploy_webhook:
+    if: ${{ env.DEPLOY_WEBHOOK == 'true' }}
+    needs: [precheck_codebase, webhook_server_precheck]
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - name: Deploy webhook over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_HOST || secrets.ROB_DEV_WEBHOOK_HOST }}
+          username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_USER || secrets.ROB_DEV_WEBHOOK_USER }}
+          key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_SSH_KEY || secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT || 22) || (secrets.ROB_DEV_WEBHOOK_SSH_PORT || 22) }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ env.DEPLOY_REF }}' SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-webhook.service' || 'rob-webhook-dev.service' }}' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/deploy-webhook.sh
