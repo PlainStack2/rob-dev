@@ -26,6 +26,63 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO dev_rob_bot;
 
 -- ---------------------------------------------------------------------------
+-- dev_rob_webhook on rob_dev_v2 (narrower scope)
+-- ---------------------------------------------------------------------------
+\connect rob_dev_v2
+
+GRANT CONNECT ON DATABASE rob_dev_v2 TO dev_rob_webhook;
+GRANT USAGE ON SCHEMA public TO dev_rob_webhook;
+
+GRANT SELECT ON
+  db_build_version,
+  bot_settings,
+  bot_users,
+  dommes,
+  subs,
+  vib_settings,
+  vib_leaderboard,
+  user_achievements,
+  achievement_events
+TO dev_rob_webhook;
+
+GRANT SELECT, INSERT, UPDATE ON
+  sends,
+  bot_users
+TO dev_rob_webhook;
+
+GRANT SELECT, INSERT ON
+  user_achievements,
+  achievement_events
+TO dev_rob_webhook;
+
+GRANT SELECT, UPDATE ON
+  dommes,
+  bot_settings
+TO dev_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE sends_id_seq
+TO dev_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE bot_users_id_seq
+TO dev_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE user_achievements_id_seq
+TO dev_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE achievement_events_id_seq
+TO dev_rob_webhook;
+
+REVOKE CREATE ON SCHEMA public FROM dev_rob_webhook;
+REVOKE DELETE ON TABLE sends FROM dev_rob_webhook;
+REVOKE DELETE ON TABLE bot_users FROM dev_rob_webhook;
+REVOKE DELETE ON TABLE user_achievements FROM dev_rob_webhook;
+REVOKE DELETE ON TABLE achievement_events FROM dev_rob_webhook;
+
+-- ---------------------------------------------------------------------------
 -- prod_rob_bot on rob_prod
 -- ---------------------------------------------------------------------------
 \connect rob_prod
@@ -60,12 +117,19 @@ GRANT SELECT ON
   dommes,
   subs,
   vib_settings,
-  vib_leaderboard
+  vib_leaderboard,
+  user_achievements,
+  achievement_events
 TO prod_rob_webhook;
 
 GRANT SELECT, INSERT, UPDATE ON
   sends,
   bot_users
+TO prod_rob_webhook;
+
+GRANT SELECT, INSERT ON
+  user_achievements,
+  achievement_events
 TO prod_rob_webhook;
 
 GRANT SELECT, UPDATE ON
@@ -81,8 +145,19 @@ GRANT USAGE, SELECT, UPDATE
 ON SEQUENCE bot_users_id_seq
 TO prod_rob_webhook;
 
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE user_achievements_id_seq
+TO prod_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE achievement_events_id_seq
+TO prod_rob_webhook;
+
 REVOKE CREATE ON SCHEMA public FROM prod_rob_webhook;
+REVOKE DELETE ON TABLE sends FROM prod_rob_webhook;
+REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook;
+REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;
+REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;
 
 -- If webhook code needs more access, add the smallest specific grant required.
--- Do not grant CREATE/ALTER/DROP to prod_rob_webhook.
-
+-- Do not grant CREATE/ALTER/DROP/TRUNCATE to webhook roles.
