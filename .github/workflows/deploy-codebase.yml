@@ -60,7 +60,7 @@ jobs:
           test -f scripts/check_db.py
 
   bot_server_precheck:
-    if: ${{ env.DEPLOY_BOT == 'true' }}
+    if: ${{ fromJSON(env.DEPLOY_BOT) }}
     needs: [precheck_codebase]
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
@@ -71,14 +71,14 @@ jobs:
           host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_HOST || secrets.ROB_DEV_BOT_HOST }}
           username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_USER || secrets.ROB_DEV_BOT_USER }}
           key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_SSH_KEY || secrets.ROB_DEV_BOT_SSH_KEY }}
-          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT || 22) || (secrets.ROB_DEV_BOT_SSH_PORT || 22) }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT != '' && secrets.ROB_PROD_BOT_SSH_PORT || '22') || (secrets.ROB_DEV_BOT_SSH_PORT != '' && secrets.ROB_DEV_BOT_SSH_PORT || '22') }}
           script: |
             set -Eeuo pipefail
             cd /opt/rob-bot/app
             SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-bot.service' || 'rob-bot-dev.service' }}' APP_DIR=/opt/rob-bot/app ./deploy/scripts/precheck-bot.sh
 
   webhook_server_precheck:
-    if: ${{ env.DEPLOY_WEBHOOK == 'true' }}
+    if: ${{ fromJSON(env.DEPLOY_WEBHOOK) }}
     needs: [precheck_codebase]
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
@@ -89,14 +89,14 @@ jobs:
           host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_HOST || secrets.ROB_DEV_WEBHOOK_HOST }}
           username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_USER || secrets.ROB_DEV_WEBHOOK_USER }}
           key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_SSH_KEY || secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
-          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT || 22) || (secrets.ROB_DEV_WEBHOOK_SSH_PORT || 22) }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT != '' && secrets.ROB_PROD_WEBHOOK_SSH_PORT || '22') || (secrets.ROB_DEV_WEBHOOK_SSH_PORT != '' && secrets.ROB_DEV_WEBHOOK_SSH_PORT || '22') }}
           script: |
             set -Eeuo pipefail
             cd /opt/rob-webhook/app
             SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-webhook.service' || 'rob-webhook-dev.service' }}' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/precheck-webhook.sh
 
   deploy_bot:
-    if: ${{ env.DEPLOY_BOT == 'true' }}
+    if: ${{ fromJSON(env.DEPLOY_BOT) }}
     needs: [precheck_codebase, bot_server_precheck]
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
@@ -107,14 +107,14 @@ jobs:
           host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_HOST || secrets.ROB_DEV_BOT_HOST }}
           username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_USER || secrets.ROB_DEV_BOT_USER }}
           key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_BOT_SSH_KEY || secrets.ROB_DEV_BOT_SSH_KEY }}
-          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT || 22) || (secrets.ROB_DEV_BOT_SSH_PORT || 22) }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_BOT_SSH_PORT != '' && secrets.ROB_PROD_BOT_SSH_PORT || '22') || (secrets.ROB_DEV_BOT_SSH_PORT != '' && secrets.ROB_DEV_BOT_SSH_PORT || '22') }}
           script: |
             set -Eeuo pipefail
             cd /opt/rob-bot/app
             DEPLOY_BRANCH=main DEPLOY_REF='${{ env.DEPLOY_REF }}' SERVICE_NAME='${{ env.DEPLOY_ENV == 'prod' && 'rob-bot.service' || 'rob-bot-dev.service' }}' APP_DIR=/opt/rob-bot/app ./deploy/scripts/deploy-bot.sh
 
   deploy_webhook:
-    if: ${{ env.DEPLOY_WEBHOOK == 'true' }}
+    if: ${{ fromJSON(env.DEPLOY_WEBHOOK) }}
     needs: [precheck_codebase, webhook_server_precheck]
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
@@ -125,7 +125,7 @@ jobs:
           host: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_HOST || secrets.ROB_DEV_WEBHOOK_HOST }}
           username: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_USER || secrets.ROB_DEV_WEBHOOK_USER }}
           key: ${{ env.DEPLOY_ENV == 'prod' && secrets.ROB_PROD_WEBHOOK_SSH_KEY || secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
-          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT || 22) || (secrets.ROB_DEV_WEBHOOK_SSH_PORT || 22) }}
+          port: ${{ env.DEPLOY_ENV == 'prod' && (secrets.ROB_PROD_WEBHOOK_SSH_PORT != '' && secrets.ROB_PROD_WEBHOOK_SSH_PORT || '22') || (secrets.ROB_DEV_WEBHOOK_SSH_PORT != '' && secrets.ROB_DEV_WEBHOOK_SSH_PORT || '22') }}
           script: |
             set -Eeuo pipefail
             cd /opt/rob-webhook/app

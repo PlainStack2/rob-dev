@@ -34,7 +34,10 @@ echo "[3/8] Checking virtual environment"
 [[ -x "${PYTHON_BIN}" ]] || { echo "ERROR: Python executable missing: ${PYTHON_BIN}"; exit 1; }
 
 echo "[4/8] Checking systemd service"
-systemctl list-unit-files | grep -Fq "${SERVICE_NAME}" || { echo "ERROR: systemd service not found: ${SERVICE_NAME}"; exit 1; }
+if ! systemctl cat "${SERVICE_NAME}" >/dev/null 2>&1; then
+  echo "ERROR: systemd service not found: ${SERVICE_NAME}"
+  exit 1
+fi
 
 echo "[5/8] Loading environment"
 set -a
