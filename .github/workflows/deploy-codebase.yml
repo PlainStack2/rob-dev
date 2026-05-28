@@ -33,7 +33,7 @@ concurrency:
 
 env:
   DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
-  DEPLOY_REF: ${{ github.event_name == 'push' && github.sha || inputs.deploy_ref }}
+  DEPLOY_REF: ${{ github.event_name == 'push' && github.sha || (inputs.deploy_ref != '' && inputs.deploy_ref || 'main') }}
   DEPLOY_BOT: ${{ github.event_name == 'push' && 'true' || inputs.deploy_bot }}
   DEPLOY_WEBHOOK: ${{ github.event_name == 'push' && 'true' || inputs.deploy_webhook }}
 

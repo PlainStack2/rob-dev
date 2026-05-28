@@ -15,6 +15,8 @@ def test_deploy_workflow_rebuild():
     assert 'needs: [precheck_codebase, bot_server_precheck]' in text
     assert 'needs: [precheck_codebase, webhook_server_precheck]' in text
     assert 'appleboy/ssh-action' in text
+    assert "if: ${{ fromJSON(env.DEPLOY_BOT) }}" in text
+    assert "if: ${{ fromJSON(env.DEPLOY_WEBHOOK) }}" in text
     for secret in [
         'ROB_DEV_BOT_HOST', 'ROB_DEV_BOT_USER', 'ROB_DEV_BOT_SSH_KEY', 'ROB_DEV_BOT_SSH_PORT',
         'ROB_DEV_WEBHOOK_HOST', 'ROB_DEV_WEBHOOK_USER', 'ROB_DEV_WEBHOOK_SSH_KEY', 'ROB_DEV_WEBHOOK_SSH_PORT',
