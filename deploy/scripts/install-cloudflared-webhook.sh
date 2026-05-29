@@ -133,6 +133,7 @@ install_token_service() {
 
   log "Installing cloudflared systemd service with the supplied Cloudflare-managed tunnel token"
   cloudflared service install "${token}"
+  log "The token was not printed or written to the repository by this script. cloudflared may store service credentials locally as part of the tunnel service install."
   systemctl enable cloudflared
   systemctl restart cloudflared
   systemctl status cloudflared --no-pager || true
@@ -152,31 +153,21 @@ create_named_tunnel_if_needed() {
   cloudflared_with_cert "${origin_cert}" tunnel create --credentials-file "${credentials_file}" "${tunnel_name}"
 }
 
-ensure_named_tunnel_credentials() {
+require_named_tunnel_credentials() {
   local tunnel_name="$1"
   local credentials_file="${CLOUDFLARED_DIR}/${tunnel_name}.json"
-  local source_file=""
 
   if [[ -f "${credentials_file}" ]]; then
     printf '%s' "${credentials_file}"
     return 0
   fi
 
-  source_file="$(find /root/.cloudflared -maxdepth 1 -type f -name '*.json' -print 2>/dev/null | head -n 1 || true)"
-  if [[ -z "${source_file}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-    local sudo_home
-    sudo_home="$(getent passwd "${SUDO_USER}" | cut -d: -f6 || true)"
-    if [[ -n "${sudo_home}" ]]; then
-      source_file="$(find "${sudo_home}/.cloudflared" -maxdepth 1 -type f -name '*.json' -print 2>/dev/null | head -n 1 || true)"
-    fi
-  fi
+  die "Named tunnel ${tunnel_name} exists, but ${credentials_file} was not found.
 
-  if [[ -z "${source_file}" ]]; then
-    die "Could not find named tunnel credentials JSON after tunnel creation. Check cloudflared tunnel list/info output."
-  fi
+Please copy the correct credentials JSON for this exact tunnel to:
+${credentials_file}
 
-  install -m 0600 -o root -g root "${source_file}" "${credentials_file}"
-  printf '%s' "${credentials_file}"
+Then rerun this script."
 }
 
 write_named_tunnel_config() {
@@ -309,13 +300,13 @@ main() {
   local credentials_file
   credentials_file="${CLOUDFLARED_DIR}/${tunnel_name}.json"
   create_named_tunnel_if_needed "${tunnel_name}" "${origin_cert}" "${credentials_file}"
+  credentials_file="$(require_named_tunnel_credentials "${tunnel_name}")"
 
   log "Creating DNS route ${public_hostname} -> ${tunnel_name}"
   if ! cloudflared_with_cert "${origin_cert}" tunnel route dns "${tunnel_name}" "${public_hostname}"; then
     warn "Could not create DNS route automatically. If it already exists, this may be safe to ignore; otherwise configure ${public_hostname} in Cloudflare."
   fi
 
-  credentials_file="$(ensure_named_tunnel_credentials "${tunnel_name}")"
   write_named_tunnel_config "${tunnel_name}" "${public_hostname}" "${service_url}" "${credentials_file}"
   install_named_tunnel_service
   warn_if_webhook_env_mismatch "https://${public_hostname}"

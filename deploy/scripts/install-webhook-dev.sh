@@ -20,6 +20,10 @@ log() {
   printf '[install-webhook-dev] %s\n' "$*"
 }
 
+warn() {
+  printf '[install-webhook-dev] warning: %s\n' "$*" >&2
+}
+
 die() {
   printf '[install-webhook-dev] error: %s\n' "$*" >&2
   exit 1
@@ -109,6 +113,9 @@ write_env_template_if_missing() {
 
   if [[ -f "${env_file}" ]]; then
     log "Keeping existing ${env_file}"
+    if grep -Eq 'dev_rob_bot|rob-dev\.barecoding\.com' "${env_file}"; then
+      warn "Existing .env appears to contain old dev webhook values. This installer will not overwrite it. Please update DATABASE_URL to prod_rob_webhook against rob_dev_v2 and THRONE_WEBHOOK_BASE_URL to https://throne.robthebot.com."
+    fi
     return
   fi
 

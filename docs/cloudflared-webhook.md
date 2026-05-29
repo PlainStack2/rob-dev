@@ -37,7 +37,8 @@ THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com
 
 The script installs `cloudflared`, runs `cloudflared service install` with the
 provided token, enables and restarts the `cloudflared` systemd service, and does
-not write the token into the repository.
+not write the token into the repository or print it. `cloudflared` may store
+service credentials locally as part of the tunnel service install.
 
 ## Locally managed named tunnel setup
 
@@ -92,6 +93,6 @@ routing propagate.
 
 - Keep the webhook app listening on `127.0.0.1:8080`.
 - Do not open firewall access to port `8080`.
-- Do not commit or print tunnel tokens.
+- Do not commit or print tunnel tokens. The installer does not write the token to the repository or print it, but `cloudflared` may store service credentials locally for the systemd service.
 - Keep `THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com` on the webhook
   host.
