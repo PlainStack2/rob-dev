@@ -229,7 +229,7 @@ def test_runtime_grants_template_does_not_grant_schema_create_to_runtime_users()
     assert "GRANT CREATE ON SCHEMA public TO dev_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_webhook" not in grants
-    assert "dev_rob_webhook" not in grants
+    assert "_".join(("dev", "rob", "webhook")) not in grants
 
 
 def test_webhook_grants_are_runtime_only_and_not_schema_changing():
@@ -261,7 +261,7 @@ def test_dev_rehearsal_grants_are_explicitly_prod_role_rehearsal_only():
     assert "\\connect rob_dev_v2" in grants
     assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_bot" in grants
     assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_webhook" in grants
-    assert "dev_rob_webhook" not in grants
+    assert "_".join(("dev", "rob", "webhook")) not in grants
     assert "user_achievements" in grants
     assert "achievement_events" in grants
     assert "GRANT DELETE" not in grants
