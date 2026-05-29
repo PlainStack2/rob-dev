@@ -59,3 +59,29 @@ def test_deploy_scripts_and_docs():
 
     assert deploy_bot
     assert deploy_webhook
+
+
+def test_cloudflared_webhook_installer_guards():
+    script_path = Path('deploy/scripts/install-cloudflared-webhook.sh')
+    assert script_path.exists()
+    script = script_path.read_text()
+
+    assert 'throne.robthebot.com' in script
+    assert 'http://127.0.0.1:8080' in script
+    assert 'TUNNEL_TOKEN=' not in script
+    assert 'eyJh' not in script
+    assert 'ufw allow 8080' not in script
+    assert 'firewall-cmd' not in script
+    assert 'iptables' not in script
+    assert '.bak-$(date +%Y%m%d-%H%M%S)' in script
+    assert 'cp -a "${CLOUDFLARED_CONFIG}" "${backup_path}"' in script
+
+
+def test_webhook_dev_installer_uses_prod_role_rehearsal_env_template():
+    script = Path('deploy/scripts/install-webhook-dev.sh').read_text()
+
+    assert 'DATABASE_URL=postgresql://dev_rob_bot:replace@127.0.0.1:5432/rob_dev_v2' not in script
+    assert 'THRONE_WEBHOOK_BASE_URL=https://rob-dev.barecoding.com' not in script
+    assert 'prod_rob_webhook' in script
+    assert 'rob_dev_v2' in script
+    assert 'https://throne.robthebot.com' in script
