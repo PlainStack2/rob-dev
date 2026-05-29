@@ -16,11 +16,9 @@ run_git() {
     return 0
   fi
 
-  local repo_owner=""
-  repo_owner="$(stat -c '%U' .git 2>/dev/null || true)"
-  if [[ -n "${repo_owner}" && "${repo_owner}" != "$(id -un)" ]] && command -v sudo >/dev/null 2>&1; then
-    echo "Git command failed as $(id -un); retrying as repository owner ${repo_owner}."
-    sudo -n -u "${repo_owner}" git "$@"
+  if command -v sudo >/dev/null 2>&1; then
+    echo "Git command failed as $(id -un); retrying with sudo."
+    sudo -n git "$@"
     return $?
   fi
 
