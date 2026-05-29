@@ -86,7 +86,7 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
     _a(
         "count_69",
         "Nice",
-        "Hehe, that's a funny number.",
+        "You said the funny number. Rob is legally required to acknowledge this.",
         category="count",
         rarity="uncommon",
         trigger_type="count_number",
@@ -509,7 +509,7 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
     _a(
         "dm_rob",
         "Did Rob Ghost You?",
-        "You messaged Rob. I guess that's achievement worth.",
+        "You messaged Rob. I guess that’s achievement-worthy.",
         category="misc",
         rarity="common",
         trigger_type="dm_rob",

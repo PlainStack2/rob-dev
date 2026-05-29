@@ -1,6 +1,7 @@
 -- Rehearsal-only runtime grants for production-style roles on rob_dev_v2.
+-- This is rehearsal-only.
 -- Run manually as doadmin when validating prod credentials before prod cutover.
--- This does not mean prod runtime should normally point at the dev database.
+-- This does not mean production runtime should normally point at the dev database.
 
 \connect rob_dev_v2
 
