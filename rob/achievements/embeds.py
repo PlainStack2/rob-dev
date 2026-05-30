@@ -6,7 +6,7 @@ from rob.achievements.definitions import ACHIEVEMENTS, ACHIEVEMENTS_BY_KEY, Achi
 from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_ROB_PURPLE, COLOR_SUCCESS
 
-_ENTRIES_PER_PAGE = 24
+_ENTRIES_PER_PAGE = 10
 
 
 def achievement_icon(achievement: AchievementDefinition, *, unlocked: bool) -> str:
@@ -22,10 +22,8 @@ def achievement_icon(achievement: AchievementDefinition, *, unlocked: bool) -> s
     }.get(achievement.rarity, "🏆")
 
 
-def _catalogue_entry(achievement: AchievementDefinition, *, unlocked: bool) -> str:
-    if not unlocked and achievement.hidden:
-        return "⚪ **Secret Achievement**\n???"
-    return f"{achievement_icon(achievement, unlocked=unlocked)} **{achievement.title}**\n{achievement.description}"
+def _catalogue_entry(achievement: AchievementDefinition) -> str:
+    return f"{achievement_icon(achievement, unlocked=True)} **{achievement.title}**\n{achievement.description}"
 
 
 def achievement_unlocked_card(
@@ -36,10 +34,11 @@ def achievement_unlocked_card(
 ) -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
+    title_icon = achievement_icon(achievement, unlocked=True)
     children: list[discord.ui.Item] = [
-        discord.ui.TextDisplay("## 🏆 Achievement Unlocked"),
+        discord.ui.TextDisplay(f"## {title_icon} {achievement.title}"),
         discord.ui.Separator(),
-        discord.ui.TextDisplay(f"**{achievement.title}**\n{achievement.description}"),
+        discord.ui.TextDisplay(achievement.description),
     ]
     if include_meta_line:
         children.append(discord.ui.Separator())
@@ -64,21 +63,20 @@ def achievements_overview_cards(
 ) -> list[RenderedMessage]:
     require_components_v2()
     known_unlocked = {key for key in unlocked_keys if key in ACHIEVEMENTS_BY_KEY}
-
-    entries = [
-        _catalogue_entry(achievement, unlocked=achievement.key in known_unlocked)
-        for achievement in ACHIEVEMENTS
-    ]
+    unlocked_achievements = [achievement for achievement in ACHIEVEMENTS if achievement.key in known_unlocked]
+    entries = [_catalogue_entry(achievement) for achievement in unlocked_achievements]
 
     pages: list[list[str]] = []
-    for start in range(0, len(entries), _ENTRIES_PER_PAGE):
-        pages.append(entries[start : start + _ENTRIES_PER_PAGE])
+    if entries:
+        for start in range(0, len(entries), _ENTRIES_PER_PAGE):
+            pages.append(entries[start : start + _ENTRIES_PER_PAGE])
+    else:
+        pages.append([])
 
-    summary_line = f"Achievements unlocked (total): **{len(known_unlocked)}/{len(ACHIEVEMENTS)}**"
+    summary_line = f"Achievements unlocked: **{len(known_unlocked)}/{len(ACHIEVEMENTS)}**"
     if newly_unlocked_count and newly_unlocked_count > 0:
         summary_line = f"{summary_line} +{newly_unlocked_count}"
-    viewed_line = f"-# Viewing: {display_name}"
-    subtitle = "-# Your profile" if for_self else viewed_line
+    subtitle = "-# Your unlocked achievements" if for_self else f"-# Viewing: {display_name}"
 
     cards: list[RenderedMessage] = []
     for index, page in enumerate(pages):
@@ -90,11 +88,17 @@ def achievements_overview_cards(
             discord.ui.Separator(),
         ]
 
-        for start in range(0, len(page), 8):
-            column_chunk = page[start : start + 8]
-            if not column_chunk:
-                continue
-            children.append(discord.ui.TextDisplay("\n\n".join(column_chunk)))
+        if page:
+            children.append(discord.ui.TextDisplay("\n\n".join(page)))
+        elif for_self:
+            children.append(
+                discord.ui.TextDisplay(
+                    "You have not unlocked any achievements yet.\n"
+                    "Go do something suspiciously Rob-shaped."
+                )
+            )
+        else:
+            children.append(discord.ui.TextDisplay(f"{display_name} has not unlocked any achievements yet."))
 
         if len(pages) > 1:
             children.append(discord.ui.Separator())

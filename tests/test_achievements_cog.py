@@ -3,18 +3,26 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from rob.achievements.definitions import ACHIEVEMENTS_BY_KEY
+from rob.achievements.definitions import ACHIEVEMENTS, ACHIEVEMENTS_BY_KEY
 from rob.discord.cogs.achievements import AchievementsCog
 
 
 class _FakeResponse:
     def __init__(self):
         self.messages: list[dict] = []
+        self.edits: list[dict] = []
+        self.deferred = False
 
     async def send_message(self, *args, **kwargs):
         if args:
             kwargs["content"] = args[0]
         self.messages.append(kwargs)
+
+    async def edit_message(self, **kwargs):
+        self.edits.append(kwargs)
+
+    async def defer(self):
+        self.deferred = True
 
 
 class _FakeFollowup:
@@ -60,13 +68,20 @@ class _FakeInteraction:
 
 
 class _FakeAchievementsService:
-    def __init__(self):
+    def __init__(self, *, unlocked_keys: set[str] | None = None, unlock_returns: bool = False):
         self.unlock_calls: list[tuple[str, int]] = []
         self.unlock_many_calls: list[dict] = []
+        self.unlocked_keys = unlocked_keys or set()
+        self.unlock_returns = unlock_returns
 
-    async def unlock_achievement(self, *, guild_id: int, discord_user_id: int, achievement_key: str, **_kwargs):
+    async def unlock_achievement(self, *, guild_id: int, discord_user_id: int, achievement_key: str, **kwargs):
         self.unlock_calls.append((achievement_key, discord_user_id))
-        return True
+        if self.unlock_returns:
+            callback = kwargs.get("on_unlocked")
+            definition = ACHIEVEMENTS_BY_KEY.get(achievement_key)
+            if callback and definition is not None:
+                await callback(definition)
+        return self.unlock_returns
 
     async def unlock_many(self, **kwargs):
         self.unlock_many_calls.append(kwargs)
@@ -74,7 +89,7 @@ class _FakeAchievementsService:
 
     async def get_user_achievement_keys(self, *, guild_id: int, discord_user_id: int):
         del guild_id, discord_user_id
-        return {"count_10"}
+        return self.unlocked_keys
 
     def all_definitions(self):
         return (
@@ -84,8 +99,11 @@ class _FakeAchievementsService:
 
 
 class _FakeBot:
-    def __init__(self):
-        self.achievements_service = _FakeAchievementsService()
+    def __init__(self, *, unlocked_keys: set[str] | None = None, unlock_returns: bool = False):
+        self.achievements_service = _FakeAchievementsService(
+            unlocked_keys=unlocked_keys,
+            unlock_returns=unlock_returns,
+        )
         self.settings = SimpleNamespace(inactivity_owner_user_id=999)
         self.guild_settings_repo = SimpleNamespace(
             get=self._get_settings,
@@ -108,8 +126,8 @@ def _message_text(payload: dict) -> str:
     )
 
 
-def test_achievements_command_shows_secret_placeholder_when_locked():
-    bot = _FakeBot()
+def test_achievements_command_shows_only_unlocked_achievements():
+    bot = _FakeBot(unlocked_keys={"count_10"})
     cog = AchievementsCog(bot)  # type: ignore[arg-type]
     member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
     interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=_FakeChannel())
@@ -121,8 +139,21 @@ def test_achievements_command_shows_secret_placeholder_when_locked():
     text = _message_text(payload)
     text += "\n".join(_message_text(message) for message in interaction.followup.messages)
     assert "Rob Achievements" in text
-    assert "⚪ **Secret Achievement**" in text
-    assert "???" in text
+    assert "Double Digits" in text
+    assert "⚪ **Secret Achievement**" not in text
+    assert "???" not in text
+
+
+def test_achievements_command_shows_empty_state_when_none_unlocked():
+    bot = _FakeBot(unlocked_keys=set())
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=_FakeChannel())
+
+    asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
+
+    text = _message_text(interaction.response.messages[0])
+    assert "You have not unlocked any achievements yet." in text
 
 
 def test_achievements_viewing_other_user_unlocks_nosy_achievement():
@@ -145,12 +176,64 @@ def test_test_achievements_renders_all_configured_cards_for_admin(monkeypatch):
     channel = _FakeChannel()
     interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=channel)
 
-    asyncio.run(AchievementsCog.test_achievements.callback(cog, interaction))
+    asyncio.run(AchievementsCog.test_achievements.callback(cog, interaction, debug=False))
 
     assert interaction.response.messages[0]["ephemeral"] is True
     assert len(channel.messages) == len(bot.achievements_service.all_definitions())
     assert bot.achievements_service.unlock_calls == []
     rendered = _message_text(channel.messages[0])
-    assert "🏆 Achievement Unlocked" in rendered
-    assert "Key:" in rendered
+    assert "Achievement Unlocked" not in rendered
+    assert "Key:" not in rendered
     assert "Unlocked by Preview Mode" in rendered
+
+
+def test_test_achievements_debug_mode_shows_metadata(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.achievements.discord.Member", _FakeMember)
+    bot = _FakeBot()
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    channel = _FakeChannel()
+    interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=channel)
+
+    asyncio.run(AchievementsCog.test_achievements.callback(cog, interaction, debug=True))
+
+    rendered = _message_text(channel.messages[0])
+    assert "Key:" in rendered
+    assert "Category:" in rendered
+
+
+def test_achievements_command_adds_pagination_buttons_after_ten_entries():
+    many_unlocked_keys = {achievement.key for achievement in ACHIEVEMENTS[:12]}
+    bot = _FakeBot(unlocked_keys=many_unlocked_keys)
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=_FakeChannel())
+
+    asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
+
+    view = interaction.response.messages[0]["view"]
+    assert type(view.children[1]).__name__ == "ActionRow"
+    buttons = view.children[1].children
+    assert [button.label for button in buttons] == ["Previous", "Next"]
+    assert buttons[0].disabled is True
+    assert buttons[1].disabled is False
+
+
+def test_achievements_pagination_rejects_other_users():
+    many_unlocked_keys = {achievement.key for achievement in ACHIEVEMENTS[:12]}
+    bot = _FakeBot(unlocked_keys=many_unlocked_keys)
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    owner = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    interaction = _FakeInteraction(user=owner, guild=_FakeGuild(1), channel=_FakeChannel())
+    asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
+
+    view = interaction.response.messages[0]["view"]
+    next_button = view.children[1].children[1]
+
+    intruder = _FakeMember(user_id=99, display_name="Intruder", role_ids=[], manage_guild=False)
+    intruder_interaction = _FakeInteraction(user=intruder, guild=_FakeGuild(1), channel=_FakeChannel())
+    asyncio.run(next_button.callback(intruder_interaction))
+
+    assert intruder_interaction.response.messages
+    assert intruder_interaction.response.messages[0]["content"] == "This achievement list belongs to someone else."
+    assert intruder_interaction.response.messages[0]["ephemeral"] is True

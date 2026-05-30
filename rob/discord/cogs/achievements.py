@@ -10,11 +10,74 @@ from discord.ext import commands
 from rob.achievements.embeds import achievement_unlocked_card, achievements_overview_cards
 from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.copy import PERMISSION_ROLE_MISSING
+from rob.ui.render import RenderedMessage, add_card_actions
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
 
 log = logging.getLogger(__name__)
+
+
+class _AchievementsPager:
+    def __init__(
+        self,
+        *,
+        owner_user_id: int,
+        cards: list[RenderedMessage],
+    ) -> None:
+        self.owner_user_id = owner_user_id
+        self.cards = cards
+        self.page_index = 0
+        self._controls_attached: set[int] = set()
+
+    def current_card(self) -> RenderedMessage:
+        card = self.cards[self.page_index]
+        self._attach_controls(card, page_index=self.page_index)
+        return card
+
+    def _attach_controls(self, card: RenderedMessage, *, page_index: int) -> None:
+        if page_index in self._controls_attached:
+            return
+        view = card.view
+        if view is None:
+            return
+        add_card_actions(
+            view,
+            _AchievementsPageButton(self, direction=-1, disabled=page_index <= 0),
+            _AchievementsPageButton(self, direction=1, disabled=page_index >= len(self.cards) - 1),
+        )
+        self._controls_attached.add(page_index)
+
+    async def handle_page_turn(self, interaction: discord.Interaction, *, direction: int) -> None:
+        interaction_user = interaction.user
+        if interaction_user is None or interaction_user.id != self.owner_user_id:
+            await interaction.response.send_message(
+                "This achievement list belongs to someone else.",
+                ephemeral=True,
+            )
+            return
+
+        next_index = max(0, min(len(self.cards) - 1, self.page_index + direction))
+        if next_index == self.page_index:
+            await interaction.response.defer()
+            return
+        self.page_index = next_index
+        await interaction.response.edit_message(**self.current_card().edit_kwargs())
+
+
+class _AchievementsPageButton(discord.ui.Button):
+    def __init__(self, pager: _AchievementsPager, *, direction: int, disabled: bool) -> None:
+        label = "Previous" if direction < 0 else "Next"
+        super().__init__(
+            label=label,
+            style=discord.ButtonStyle.secondary,
+            disabled=disabled,
+        )
+        self.pager = pager
+        self.direction = direction
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await self.pager.handle_page_turn(interaction, direction=self.direction)
 
 
 class AchievementsCog(commands.Cog):
@@ -90,10 +153,11 @@ class AchievementsCog(commands.Cog):
             for_self=target.id == viewer.id,
             newly_unlocked_count=newly_unlocked,
         )
-        first, *rest = cards
-        await interaction.response.send_message(**first.send_kwargs(), ephemeral=False)
-        for card in rest:
-            await interaction.followup.send(**card.send_kwargs(), ephemeral=False)
+        if len(cards) == 1:
+            await interaction.response.send_message(**cards[0].send_kwargs(), ephemeral=False)
+        else:
+            pager = _AchievementsPager(owner_user_id=viewer.id, cards=cards)
+            await interaction.response.send_message(**pager.current_card().send_kwargs(), ephemeral=False)
         for card in unlocked_cards:
             await interaction.followup.send(**card.send_kwargs(), ephemeral=False)
 
@@ -112,7 +176,8 @@ class AchievementsCog(commands.Cog):
         return any(role.id == settings.mod_role_id for role in interaction.user.roles)
 
     @test_group.command(name="achievements", description="Preview all configured achievement cards.")
-    async def test_achievements(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(debug="Include internal metadata lines for each preview card.")
+    async def test_achievements(self, interaction: discord.Interaction, debug: bool = False) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(
                 **error_card("This command can only be used in a server.").send_kwargs(),
@@ -139,7 +204,7 @@ class AchievementsCog(commands.Cog):
                     **achievement_unlocked_card(
                         achievement,
                         unlocked_by_display_name="Preview Mode",
-                        include_meta_line=True,
+                        include_meta_line=debug,
                     ).send_kwargs()
                 )
             except discord.HTTPException:
