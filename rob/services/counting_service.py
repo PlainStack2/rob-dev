@@ -28,8 +28,17 @@ log = logging.getLogger(__name__)
 _CLAIMED_ROLE_PREFIX_KEY = "count_claimed_role_prefix"
 _DEFAULT_CLAIMED_ROLE_PREFIX = "Claimed by "
 _CLAIM_UNRESOLVED_SENTINEL = 0
+_COUNT_HIGH_WATERMARK_KEY_PREFIX = "count_high_watermark:"
 _MAX_COUNT_EXPRESSION_LENGTH = 80
 _ALLOWED_EXPRESSION_CHARS = set("0123456789+-*/() ")
+_SPECIAL_NUMBER_REACTIONS: dict[int, tuple[str, ...]] = {
+    1: ("🥇",),
+    2: ("🥈",),
+    3: ("🥉",),
+    67: ("6️⃣", "7️⃣"),
+    69: ("🫦",),
+    100: ("💯",),
+}
 
 
 @dataclass(frozen=True)
@@ -40,6 +49,7 @@ class CountingProcessResult:
     reason: str | None = None
     deadline: datetime | None = None
     blocked_until: datetime | None = None
+    reactions: tuple[str, ...] = ()
 
 
 @dataclass
@@ -234,6 +244,9 @@ class CountingService:
             await self._expire_window(active_window)
             state = await self.get_or_create_state(message.guild.id)
 
+        if getattr(message, "attachments", None) or getattr(message, "stickers", None):
+            return None
+
         content = message.content.strip()
         is_attempt, number = self._parse_count_attempt(content)
         if not is_attempt:
@@ -345,6 +358,10 @@ class CountingService:
             is_enabled=state.is_enabled,
             pending_restore=False,
         )
+        reactions = await self._build_success_reactions(
+            guild_id=message.guild.id,
+            number=number,
+        )
         if self.achievements is not None:
             on_unlocked = self._make_channel_achievement_announcer(
                 guild_id=message.guild.id,
@@ -377,6 +394,7 @@ class CountingService:
             success=True,
             expected_number=expected,
             current_number=number,
+            reactions=reactions,
         )
 
     async def process_send_for_count_rescue(self, send) -> bool:
@@ -844,10 +862,8 @@ class CountingService:
         stripped = content.strip()
         if not stripped:
             return False, 0
-        if stripped.isdigit():
-            return True, int(stripped)
         if len(stripped) > _MAX_COUNT_EXPRESSION_LENGTH:
-            return True, -1
+            return False, 0
         if not any(ch.isdigit() for ch in stripped):
             return False, 0
         if any(ch not in _ALLOWED_EXPRESSION_CHARS for ch in stripped):
@@ -855,7 +871,7 @@ class CountingService:
         try:
             return True, _ExpressionEvaluator.evaluate(stripped)
         except ValueError:
-            return True, -1
+            return False, 0
 
     @staticmethod
     def evaluate_expression(content: str) -> int:
@@ -866,3 +882,24 @@ class CountingService:
 
     async def resolve_expired_windows_once(self) -> None:
         await self._sync_recovery_windows()
+
+    async def _build_success_reactions(self, *, guild_id: int, number: int) -> tuple[str, ...]:
+        reactions: list[str] = ["✅"]
+        if await self._update_high_watermark_if_needed(guild_id=guild_id, number=number):
+            reactions.append("🎉")
+        reactions.extend(_SPECIAL_NUMBER_REACTIONS.get(number, ()))
+        return tuple(reactions)
+
+    async def _update_high_watermark_if_needed(self, *, guild_id: int, number: int) -> bool:
+        if self.bot_settings is None:
+            return False
+        key = f"{_COUNT_HIGH_WATERMARK_KEY_PREFIX}{guild_id}"
+        current_value = await self.bot_settings.get_text(key)
+        try:
+            current_high = int(current_value) if current_value is not None else 0
+        except (TypeError, ValueError):
+            current_high = 0
+        if number <= current_high:
+            return False
+        await self.bot_settings.set_value(key, str(number))
+        return True

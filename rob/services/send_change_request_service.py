@@ -323,6 +323,12 @@ class SendChangeRequestService:
         )
         return view
 
+    def _build_action_buttons(self, request_id: int) -> tuple[discord.ui.Button, discord.ui.Button]:
+        return (
+            _SendChangeDecisionButton(service=self, request_id=request_id, approve=True),
+            _SendChangeDecisionButton(service=self, request_id=request_id, approve=False),
+        )
+
     async def _deliver_request(
         self,
         request: SendChangeRequest,
@@ -332,19 +338,28 @@ class SendChangeRequestService:
     ) -> SendChangeRequest:
         user = self.bot.get_user(domme.discord_user_id)
         if user is None:
-            user = await self.bot.fetch_user(domme.discord_user_id)
+            try:
+                user = await self.bot.fetch_user(domme.discord_user_id)
+            except discord.HTTPException as exc:
+                await self.requests.mark_failed(
+                    request_id=request.id,
+                    approved_by_user_id=None,
+                    decision_reason="Rob could not fetch the target Dom/me for approval.",
+                )
+                raise ValueError("Rob could not fetch the target Dom/me for approval.") from exc
 
         domme_label = (
             domme.public_display_name
             or (f"@{domme.throne_handle}" if domme.throne_handle else f"<@{domme.discord_user_id}>")
         )
-        view = self._build_view(request.id)
+        view = discord.ui.LayoutView(timeout=None)
         rendered = send_change_request_card(
             request,
             domme_label=domme_label,
             target_send=target_send,
             view=view,
         )
+        add_card_actions(view, *self._build_action_buttons(request.id))
         try:
             message = await user.send(**rendered.send_kwargs())
         except discord.Forbidden as exc:
@@ -354,6 +369,13 @@ class SendChangeRequestService:
                 decision_reason="Could not DM the target Dom/me for approval.",
             )
             raise ValueError("Rob could not DM the target Dom/me for approval.") from exc
+        except discord.HTTPException as exc:
+            await self.requests.mark_failed(
+                request_id=request.id,
+                approved_by_user_id=None,
+                decision_reason="Rob could not deliver the approval message to the target Dom/me.",
+            )
+            raise ValueError("Rob could not deliver the approval message to the target Dom/me.") from exc
 
         updated = await self.requests.set_delivery(
             request_id=request.id,

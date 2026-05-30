@@ -653,6 +653,12 @@ class BotOpsServer:
             )
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
+        except Exception:
+            log.exception("Send add approval request failed guild_id=%s domme_lookup=%s", guild_id, domme_lookup)
+            return web.json_response(
+                {"error": "Rob could not create the send approval request just now."},
+                status=500,
+            )
         return web.json_response(
             {
                 "ok": True,
@@ -689,6 +695,17 @@ class BotOpsServer:
             )
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
+        except Exception:
+            log.exception(
+                "Send remove approval request failed guild_id=%s domme_lookup=%s send_id=%s",
+                guild_id,
+                domme_lookup,
+                send_id,
+            )
+            return web.json_response(
+                {"error": "Rob could not create the send removal approval request just now."},
+                status=500,
+            )
         return web.json_response(
             {
                 "ok": True,

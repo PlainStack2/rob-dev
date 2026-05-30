@@ -40,7 +40,7 @@ def test_secret_achievement_is_hidden():
     achievement = ACHIEVEMENTS_BY_KEY["secret_command"]
     assert achievement.hidden is True
     assert achievement.rarity == "secret"
-    assert achievement.enabled is False
+    assert achievement.enabled is True
 
 
 def test_preview_renderer_can_iterate_all_achievements():

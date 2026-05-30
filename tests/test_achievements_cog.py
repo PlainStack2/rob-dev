@@ -54,8 +54,15 @@ class _FakeMember:
     def __init__(self, *, user_id: int, display_name: str, role_ids: list[int], manage_guild: bool = False):
         self.id = user_id
         self.display_name = display_name
+        self.name = display_name
         self.roles = [SimpleNamespace(id=role_id) for role_id in role_ids]
         self.guild_permissions = SimpleNamespace(manage_guild=manage_guild)
+        self.dm_messages: list[dict] = []
+
+    async def send(self, *args, **kwargs):
+        if args:
+            kwargs["content"] = args[0]
+        self.dm_messages.append(kwargs)
 
 
 class _FakeInteraction:
@@ -65,6 +72,24 @@ class _FakeInteraction:
         self.channel = channel
         self.response = _FakeResponse()
         self.followup = _FakeFollowup()
+
+
+class _FakeContext:
+    def __init__(self, *, author: _FakeMember, guild: _FakeGuild | None, channel: _FakeChannel):
+        self.author = author
+        self.guild = guild
+        self.channel = channel
+        self.message = SimpleNamespace(delete=self._delete)
+        self.replies: list[dict] = []
+        self.deleted = False
+
+    async def _delete(self):
+        self.deleted = True
+
+    async def reply(self, *args, **kwargs):
+        if args:
+            kwargs["content"] = args[0]
+        self.replies.append(kwargs)
 
 
 class _FakeAchievementsService:
@@ -90,6 +115,13 @@ class _FakeAchievementsService:
     async def get_user_achievement_keys(self, *, guild_id: int, discord_user_id: int):
         del guild_id, discord_user_id
         return self.unlocked_keys
+
+    async def get_user_achievements(self, *, guild_id: int, discord_user_id: int):
+        del guild_id, discord_user_id
+        return [ACHIEVEMENTS_BY_KEY[key] for key in ACHIEVEMENTS_BY_KEY if key in self.unlocked_keys]
+
+    def get_definition(self, key: str):
+        return ACHIEVEMENTS_BY_KEY.get(key)
 
     def all_definitions(self):
         return (
@@ -135,7 +167,7 @@ def _message_text(payload: dict) -> str:
     )
 
 
-def test_achievements_command_shows_catalogue_with_locked_entries():
+def test_achievements_command_shows_only_unlocked_entries_publicly():
     bot = _FakeBot(unlocked_keys={"count_10"})
     cog = AchievementsCog(bot)  # type: ignore[arg-type]
     member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
@@ -144,13 +176,13 @@ def test_achievements_command_shows_catalogue_with_locked_entries():
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
     payload = interaction.response.messages[0]
-    assert payload["ephemeral"] is True
+    assert "ephemeral" not in payload
     text = _message_text(payload)
     assert "Rob Achievements" in text
     assert "Double Digits" in text
-    assert "Achievements unlocked (total): 1/" in text
-    assert "The 67 Incident" in text
-    assert "You said 67." in text
+    assert "Achievements unlocked: 1/" in text
+    assert "The 67 Incident" not in text
+    assert "You said 67." not in text
 
 
 def test_achievements_command_does_not_send_unlock_followups_for_meta_achievements():
@@ -164,7 +196,7 @@ def test_achievements_command_does_not_send_unlock_followups_for_meta_achievemen
     assert interaction.followup.messages == []
 
 
-def test_achievements_command_shows_zero_progress_when_none_unlocked():
+def test_achievements_command_shows_empty_state_when_none_unlocked():
     bot = _FakeBot(unlocked_keys=set())
     cog = AchievementsCog(bot)  # type: ignore[arg-type]
     member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
@@ -173,8 +205,9 @@ def test_achievements_command_shows_zero_progress_when_none_unlocked():
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
     text = _message_text(interaction.response.messages[0])
-    assert "Achievements unlocked (total): 0/" in text
-    assert "Double Digits" in text
+    assert "Achievements unlocked: 0/" in text
+    assert "Nothing here yet" in text
+    assert "Double Digits" not in text
 
 
 def test_achievements_viewing_other_user_unlocks_nosy_achievement():
@@ -257,3 +290,22 @@ def test_achievements_pagination_rejects_other_users():
     assert intruder_interaction.response.messages
     assert intruder_interaction.response.messages[0]["content"] == "This achievement list belongs to someone else."
     assert intruder_interaction.response.messages[0]["ephemeral"] is True
+
+
+def test_secret_prefix_command_dms_user_and_deletes_trigger():
+    bot = _FakeBot(unlocked_keys=set(), unlock_returns=True)
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    ctx = _FakeContext(author=member, guild=_FakeGuild(1), channel=_FakeChannel())
+
+    asyncio.run(AchievementsCog.secret_prefix.callback(cog, ctx))
+
+    assert ctx.deleted is True
+    assert member.dm_messages
+    assert "Shhhh..." in _message_text(member.dm_messages[0])
+    assert ctx.replies == []
+
+
+def test_secret_slash_command_has_been_removed():
+    command_names = [command.name for command in AchievementsCog.__cog_app_commands__]
+    assert "secret" not in command_names

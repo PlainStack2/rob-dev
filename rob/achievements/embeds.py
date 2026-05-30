@@ -5,24 +5,13 @@ import math
 import discord
 
 from rob.achievements.definitions import (
-    ACHIEVEMENTS_BY_KEY,
     ENABLED_ACHIEVEMENTS,
     AchievementDefinition,
 )
 from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_ROB_PURPLE, COLOR_SUCCESS
 
-_ENTRIES_PER_PAGE = 15
-
-
-def _achievement_field(
-    achievement: AchievementDefinition,
-    *,
-    unlocked: bool,
-) -> tuple[str, str]:
-    if not unlocked and achievement.hidden:
-        return ("Secret Achievement", "???")
-    return (achievement.title, achievement.description)
+_ENTRIES_PER_PAGE = 10
 
 
 def achievement_unlocked_card(
@@ -55,39 +44,43 @@ def achievement_unlocked_card(
 def achievements_overview_cards(
     *,
     display_name: str,
-    unlocked_keys: set[str],
+    unlocked_achievements: list[AchievementDefinition],
     for_self: bool,
     newly_unlocked_count: int | None = None,
 ) -> list[RenderedMessage]:
-    known_unlocked = {
-        key
-        for key in unlocked_keys
-        if key in ACHIEVEMENTS_BY_KEY and key in {achievement.key for achievement in ENABLED_ACHIEVEMENTS}
-    }
-    page_count = max(1, math.ceil(len(ENABLED_ACHIEVEMENTS) / _ENTRIES_PER_PAGE))
-    summary_line = f"Achievements unlocked (total): {len(known_unlocked)}/{len(ENABLED_ACHIEVEMENTS)}"
+    unlocked_total = len(unlocked_achievements)
+    page_count = max(1, math.ceil(unlocked_total / _ENTRIES_PER_PAGE)) if unlocked_total else 1
+    summary_line = f"Achievements unlocked: {unlocked_total}/{len(ENABLED_ACHIEVEMENTS)}"
     if newly_unlocked_count and newly_unlocked_count > 0:
         summary_line = f"{summary_line} +{newly_unlocked_count}"
 
     cards: list[RenderedMessage] = []
     for index in range(page_count):
         start = index * _ENTRIES_PER_PAGE
-        page_achievements = ENABLED_ACHIEVEMENTS[start : start + _ENTRIES_PER_PAGE]
+        page_achievements = unlocked_achievements[start : start + _ENTRIES_PER_PAGE]
 
         embed = discord.Embed(
             title="Rob Achievements",
             description=summary_line,
             colour=COLOR_ROB_PURPLE,
         )
-        embed.set_author(name=display_name if not for_self else f"{display_name}'s catalogue")
+        embed.set_author(name=f"{display_name}'s achievements" if not for_self else f"{display_name}'s achievements")
         embed.set_footer(text=f"Page {index + 1}/{page_count}")
 
-        for achievement in page_achievements:
-            title, description = _achievement_field(
-                achievement,
-                unlocked=achievement.key in known_unlocked,
+        if not page_achievements:
+            empty_state = "You have not unlocked any achievements yet."
+            if not for_self:
+                empty_state = f"{display_name} has not unlocked any achievements yet."
+            embed.add_field(
+                name="Nothing here yet",
+                value=f"{empty_state}\nGo do something suspiciously Rob-shaped.",
+                inline=False,
             )
-            embed.add_field(name=title, value=description, inline=True)
+            cards.append(RenderedMessage(embeds=[embed], view=discord.ui.View(timeout=1800), mode="embed"))
+            continue
+
+        for achievement in page_achievements:
+            embed.add_field(name=achievement.title, value=achievement.description, inline=True)
 
         cards.append(RenderedMessage(embeds=[embed], view=discord.ui.View(timeout=1800), mode="embed"))
 

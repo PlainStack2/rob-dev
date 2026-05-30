@@ -244,19 +244,26 @@ class _FakeDommesRepo:
 
 
 class _FakeBotSettings:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
     async def get_text(self, key: str):
         if key == "count_claimed_role_prefix":
             return "Claimed by "
-        return None
+        return self.values.get(key)
+
+    async def set_value(self, key: str, value: str):
+        self.values[key] = value
 
 
 def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild):
+    bot_settings = _FakeBotSettings()
     return CountingService(
         bot=_FakeBot(guild),
         counting=repo,
         guild_settings=_FakeGuildSettingsRepo(),
         dommes=_FakeDommesRepo(),
-        bot_settings=_FakeBotSettings(),
+        bot_settings=bot_settings,
         achievements=None,
         rescue_tick_seconds=1,
         rescue_window_seconds=300,
@@ -307,6 +314,43 @@ def test_basic_math_expression_parser_accepts_valid_cases():
 def test_basic_math_expression_parser_rejects_unsafe_or_invalid_cases(expression: str):
     with pytest.raises(ValueError):
         CountingService.evaluate_expression(expression)
+
+
+def test_non_numeric_and_invalid_math_messages_are_ignored():
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 3, 9, True, False, datetime.now(timezone.utc))
+
+    ignored_plain = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="hello there", channel=guild.get_channel(100))
+        )
+    )
+    ignored_invalid_math = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="5 / 2", channel=guild.get_channel(100))
+        )
+    )
+
+    assert ignored_plain is None
+    assert ignored_invalid_math is None
+    assert repo.state.current_number == 3
+
+
+def test_successful_count_returns_standard_high_score_and_special_reactions():
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 66, 9, True, False, datetime.now(timezone.utc))
+    service.bot_settings.values["count_high_watermark:1"] = "66"
+
+    result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="67", channel=guild.get_channel(100))
+        )
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert result.reactions == ("✅", "🎉", "6️⃣", "7️⃣")
+    assert service.bot_settings.values["count_high_watermark:1"] == "67"
 
 
 def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers():

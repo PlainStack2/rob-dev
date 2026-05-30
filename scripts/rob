@@ -234,6 +234,12 @@ psql_query() {
   psql "${DATABASE_URL}" "${args[@]}" -c "${sql}"
 }
 
+sql_quote_literal() {
+  local value="$1"
+  value="${value//\'/\'\'}"
+  printf "'%s'" "${value}"
+}
+
 print_table() {
   if command -v column >/dev/null 2>&1; then
     column -t -s $'\t'
@@ -336,8 +342,7 @@ dommes_command() {
       local rows
       rows="$(
         psql_query \
-          "SELECT discord_user_id, COALESCE(public_display_name, '-') AS public_display_name, COALESCE(throne_handle, '-') AS throne_handle, tracking_status, profile_status FROM dommes WHERE guild_id = :'guild_id'::bigint ORDER BY registered_at ASC, discord_user_id ASC" \
-          "guild_id=${GUILD_ID}"
+          "SELECT discord_user_id, COALESCE(public_display_name, '-') AS public_display_name, COALESCE(throne_handle, '-') AS throne_handle, tracking_status, profile_status FROM dommes WHERE guild_id = ${GUILD_ID} ORDER BY registered_at ASC, discord_user_id ASC"
       )"
       if [[ -z "${rows}" ]]; then
         printf 'No Dom/mes found for guild %s.\n' "${GUILD_ID}"
@@ -398,8 +403,7 @@ subs_command() {
       local rows
       rows="$(
         psql_query \
-          "SELECT s.discord_user_id, s.send_name AS primary_send_name, COALESCE(string_agg(ssn.send_name, ', ' ORDER BY ssn.is_primary DESC, lower(ssn.send_name)), s.send_name) AS registered_send_names FROM subs s LEFT JOIN sub_send_names ssn ON ssn.guild_id = s.guild_id AND ssn.sub_id = s.id WHERE s.guild_id = :'guild_id'::bigint GROUP BY s.id ORDER BY s.registered_at ASC, lower(s.send_name) ASC" \
-          "guild_id=${GUILD_ID}"
+          "SELECT s.discord_user_id, s.send_name AS primary_send_name, COALESCE(string_agg(ssn.send_name, ', ' ORDER BY ssn.is_primary DESC, lower(ssn.send_name)), s.send_name) AS registered_send_names FROM subs s LEFT JOIN sub_send_names ssn ON ssn.guild_id = s.guild_id AND ssn.sub_id = s.id WHERE s.guild_id = ${GUILD_ID} GROUP BY s.id ORDER BY s.registered_at ASC, lower(s.send_name) ASC"
       )"
       if [[ -z "${rows}" ]]; then
         printf 'No Subs found for guild %s.\n' "${GUILD_ID}"
@@ -424,13 +428,13 @@ sends_lookup_command() {
     set --
   fi
   [[ $# -eq 1 ]] || die "usage: rob sends <domme_lookup> --guild <guild_id>"
+  local lookup_sql
+  lookup_sql="$(sql_quote_literal "$1")"
 
   local rows
   rows="$(
     psql_query \
-      "SELECT s.id, to_char(s.sent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z' AS sent_at_utc, s.currency || ' ' || to_char((s.amount_cents::numeric / 100.0), 'FM999999990.00') AS amount, COALESCE(s.sub_name, '-') AS sub_name, s.source, s.discord_post_status FROM sends s JOIN dommes d ON d.guild_id = s.guild_id AND d.discord_user_id = s.domme_user_id WHERE s.guild_id = :'guild_id'::bigint AND (d.discord_user_id::text = :'lookup' OR lower(COALESCE(d.throne_handle, '')) = lower(:'lookup') OR lower(COALESCE(d.public_display_name, '')) = lower(:'lookup')) ORDER BY s.sent_at DESC, s.id DESC LIMIT 50" \
-      "guild_id=${GUILD_ID}" \
-      "lookup=$1"
+      "SELECT s.id, to_char(s.sent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z' AS sent_at_utc, s.currency || ' ' || to_char((s.amount_cents::numeric / 100.0), 'FM999999990.00') AS amount, COALESCE(s.sub_name, '-') AS sub_name, s.source, s.discord_post_status FROM sends s JOIN dommes d ON d.guild_id = s.guild_id AND d.discord_user_id = s.domme_user_id WHERE s.guild_id = ${GUILD_ID} AND (d.discord_user_id::text = ${lookup_sql} OR lower(COALESCE(d.throne_handle, '')) = lower(${lookup_sql}) OR lower(COALESCE(d.public_display_name, '')) = lower(${lookup_sql})) ORDER BY s.sent_at DESC, s.id DESC LIMIT 50"
   )"
 
   if [[ -z "${rows}" ]]; then

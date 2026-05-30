@@ -50,10 +50,11 @@ class CountingCog(commands.Cog):
         if result is None:
             return
         if result.success:
-            try:
-                await message.add_reaction("✅")
-            except discord.HTTPException:
-                return
+            for reaction in result.reactions or ("✅",):
+                try:
+                    await message.add_reaction(reaction)
+                except discord.HTTPException:
+                    continue
             return
 
         if result.reason == "same_user":

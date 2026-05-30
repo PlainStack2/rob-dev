@@ -132,7 +132,7 @@ def count_failed_reset_card() -> RenderedMessage:
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "No qualifying send arrived in time.\n"
-                "Rob has reset the count."
+                "Rob has reset the count to **1**."
             ),
             accent_color=COLOR_INFO,
         )

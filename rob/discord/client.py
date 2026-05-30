@@ -178,14 +178,7 @@ class RobBot(commands.Bot):
         await self.send_change_request_service.rebind_pending_views()
 
         guild_ids = await self.vib_settings_repo.list_guild_ids()
-        if len(guild_ids) == 1:
-            guild = discord.Object(id=guild_ids[0])
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            log.info("Synced %s guild command(s).", len(synced))
-        else:
-            synced = await self.tree.sync()
-            log.info("Synced %s global command(s).", len(synced))
+        await self._sync_application_commands(guild_ids)
 
         await self.counting_service.start()
         await self.send_queue_service.start()
@@ -204,6 +197,19 @@ class RobBot(commands.Bot):
             )
             return False
         return True
+
+    async def _sync_application_commands(self, guild_ids: list[int]) -> None:
+        if len(guild_ids) == 1:
+            guild = discord.Object(id=guild_ids[0])
+            self.tree.clear_commands(guild=guild)
+            cleared = await self.tree.sync(guild=guild)
+            log.info(
+                "Cleared %s stale guild command(s) before syncing global commands.",
+                len(cleared),
+            )
+
+        synced = await self.tree.sync()
+        log.info("Synced %s global command(s).", len(synced))
 
     async def on_ready(self) -> None:
         log.info("%s is online as %s.", self.settings.bot_name, self.user)

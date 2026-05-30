@@ -143,21 +143,21 @@ class AchievementsCog(commands.Cog):
             ):
                 newly_unlocked += 1
 
-        unlocked_keys = await self.bot.achievements_service.get_user_achievement_keys(
+        unlocked_achievements = await self.bot.achievements_service.get_user_achievements(
             guild_id=interaction.guild.id,
             discord_user_id=target.id,
         )
         cards = achievements_overview_cards(
             display_name=target.display_name,
-            unlocked_keys=unlocked_keys,
+            unlocked_achievements=unlocked_achievements,
             for_self=target.id == viewer.id,
             newly_unlocked_count=newly_unlocked,
         )
         if len(cards) == 1:
-            await interaction.response.send_message(**cards[0].send_kwargs(), ephemeral=True)
+            await interaction.response.send_message(**cards[0].send_kwargs())
         else:
             pager = _AchievementsPager(owner_user_id=viewer.id, cards=cards)
-            await interaction.response.send_message(**pager.current_card().send_kwargs(), ephemeral=True)
+            await interaction.response.send_message(**pager.current_card().send_kwargs())
 
     async def _can_use_test_achievements(self, interaction: discord.Interaction) -> bool:
         if interaction.guild is None or interaction.user is None:
@@ -239,3 +239,68 @@ class AchievementsCog(commands.Cog):
                 ).send_kwargs()
             ),
         )
+
+    async def _unlock_secret_achievement(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        display_name: str,
+    ) -> RenderedMessage | str:
+        definition = self.bot.achievements_service.get_definition("secret_command")
+        if definition is None:
+            return "Rob misplaced that secret. Try again in a moment."
+        unlocked = await self.bot.achievements_service.unlock_achievement(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            achievement_key="secret_command",
+            source="secret-command",
+        )
+        if not unlocked:
+            return "Rob already told you to keep that secret."
+        return achievement_unlocked_card(
+            definition,
+            unlocked_by_display_name=display_name,
+        )
+
+    @commands.command(name="secret", hidden=True)
+    async def secret_prefix(self, ctx: commands.Context) -> None:
+        if ctx.guild is None or ctx.author is None:
+            await ctx.reply("Use `!secret` in the server so Rob can attach it to the right guild.", mention_author=False)
+            return
+
+        display_name = getattr(ctx.author, "display_name", None) or getattr(
+            ctx.author,
+            "name",
+            str(ctx.author.id),
+        )
+        payload = await self._unlock_secret_achievement(
+            guild_id=ctx.guild.id,
+            discord_user_id=ctx.author.id,
+            display_name=display_name,
+        )
+
+        try:
+            await ctx.message.delete()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+        if isinstance(payload, str):
+            try:
+                await ctx.author.send(payload)
+            except discord.Forbidden:
+                await ctx.reply(
+                    "Rob tried to keep that private, but your DMs are closed. Open them and try `!secret` again.",
+                    mention_author=False,
+                    delete_after=15,
+                )
+            return
+
+        try:
+            await ctx.author.send(**payload.send_kwargs())
+        except discord.Forbidden:
+            await ctx.reply(
+                "Rob couldn't DM you the secret card. Open your DMs and try `!secret` again.",
+                mention_author=False,
+                delete_after=15,
+            )

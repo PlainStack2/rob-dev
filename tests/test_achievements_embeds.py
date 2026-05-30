@@ -25,38 +25,39 @@ def _card_text(card) -> str:
 def test_achievements_catalogue_uses_compact_embed_field_layout():
     cards = achievements_overview_cards(
         display_name="Pat",
-        unlocked_keys={"count_10"},
+        unlocked_achievements=[ACHIEVEMENTS_BY_KEY["count_10"]],
         for_self=True,
     )
     embed = cards[0].embeds[0]
     text = _card_text(cards[0])
     assert embed.title == "Rob Achievements"
-    assert "Achievements unlocked (total): 1/" in (embed.description or "")
+    assert "Achievements unlocked: 1/" in (embed.description or "")
     assert any(field.name == "Double Digits" for field in embed.fields)
     assert "You counted to 10. Humanity may yet survive." in text
 
 
-def test_locked_catalogue_entries_render_even_when_user_has_none_unlocked():
+def test_locked_catalogue_entries_do_not_render_when_user_has_none_unlocked():
     cards = achievements_overview_cards(
         display_name="Pat",
-        unlocked_keys=set(),
+        unlocked_achievements=[],
         for_self=True,
     )
     text = "\n".join(_card_text(card) for card in cards)
-    assert "Double Digits" in text
-    assert "You counted to 10. Humanity may yet survive." in text
+    assert "Double Digits" not in text
+    assert "Nothing here yet" in text
+    assert "Go do something suspiciously Rob-shaped." in text
 
 
-def test_catalogue_pages_cap_entries_per_page_to_fifteen():
-    unlocked_keys = {achievement.key for achievement in ACHIEVEMENTS}
+def test_catalogue_pages_cap_entries_per_page_to_ten():
+    unlocked = list(ACHIEVEMENTS)
     cards = achievements_overview_cards(
         display_name="Pat",
-        unlocked_keys=unlocked_keys,
+        unlocked_achievements=unlocked,
         for_self=True,
     )
     assert cards
     for card in cards:
-        assert len(card.embeds[0].fields) <= 15
+        assert len(card.embeds[0].fields) <= 10
 
 
 def test_unlock_card_uses_plain_title_and_unlocked_by_line():

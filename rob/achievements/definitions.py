@@ -529,7 +529,7 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
         category="secret",
         rarity="secret",
         hidden=True,
-        enabled=False,
+        enabled=True,
         trigger_type="secret_command",
     ),
 )

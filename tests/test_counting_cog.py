@@ -56,3 +56,19 @@ def test_wrong_number_recovery_path_deletes_without_reacting():
 
     assert message.deleted is True
     assert message.reactions == []
+
+
+def test_success_path_applies_all_requested_reactions():
+    result = SimpleNamespace(
+        success=True,
+        reason=None,
+        blocked_until=None,
+        reactions=("✅", "🎉", "💯"),
+    )
+    cog = CountingCog(_FakeBot(result))  # type: ignore[arg-type]
+    message = _FakeMessage()
+
+    asyncio.run(cog.on_message(message))
+
+    assert message.deleted is False
+    assert message.reactions == ["✅", "🎉", "💯"]

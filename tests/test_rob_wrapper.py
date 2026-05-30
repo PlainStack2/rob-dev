@@ -69,7 +69,7 @@ def test_rob_wrapper_lists_dommes_via_psql_without_python(tmp_path: Path):
     )
 
     assert "Mistress" in result.stdout
-    assert "guild_id=42" in log_path.read_text(encoding="utf-8")
+    assert "WHERE guild_id = 42" in log_path.read_text(encoding="utf-8")
 
 
 def test_robctl_wrapper_resolves_real_repo_root_from_symlink(tmp_path: Path):
