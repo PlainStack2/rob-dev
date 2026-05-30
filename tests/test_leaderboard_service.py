@@ -18,16 +18,25 @@ class _FakeMessage:
         self.edits.append(kwargs)
 
 
+class _FakePartialMessage:
+    def __init__(self, channel: "_FakeChannel", message_id: int):
+        self.channel = channel
+        self.id = message_id
+
+    async def edit(self, **kwargs):
+        if self.id not in self.channel._messages:
+            raise KeyError(self.id)
+        await self.channel._messages[self.id].edit(**kwargs)
+
+
 class _FakeChannel:
     def __init__(self):
         self.id = 999
         self._messages: dict[int, _FakeMessage] = {}
         self.sends: list[dict] = []
 
-    async def fetch_message(self, message_id: int):
-        if message_id not in self._messages:
-            raise KeyError(message_id)
-        return self._messages[message_id]
+    def get_partial_message(self, message_id: int):
+        return _FakePartialMessage(self, message_id)
 
     async def send(self, **kwargs):
         self.sends.append(kwargs)
@@ -207,7 +216,7 @@ def test_refresh_posts_new_when_referenced_message_missing(monkeypatch: pytest.M
     assert keys == ["leaderboard", "leaderboard_stats"]
 
 
-def test_refresh_recreates_full_pair_when_one_ref_is_missing(monkeypatch: pytest.MonkeyPatch):
+def test_refresh_recreates_missing_side_only_when_one_ref_is_missing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
     channel = _FakeChannel()
     existing_main = _FakeMessage(101)
@@ -218,10 +227,10 @@ def test_refresh_recreates_full_pair_when_one_ref_is_missing(monkeypatch: pytest
 
     asyncio.run(service.refresh_guild(1))
 
-    assert existing_main.edits == []
-    assert len(channel.sends) == 2
+    assert len(existing_main.edits) == 1
+    assert len(channel.sends) == 1
     keys = [u["message_key"] for u in repo.upserts]
-    assert keys == ["leaderboard", "leaderboard_stats"]
+    assert keys == ["leaderboard_stats"]
 
 
 def test_refresh_recreates_full_pair_when_ref_channel_mismatches(monkeypatch: pytest.MonkeyPatch):
@@ -237,6 +246,30 @@ def test_refresh_recreates_full_pair_when_ref_channel_mismatches(monkeypatch: py
     assert len(channel.sends) == 2
     assert repo.refs[(1, "leaderboard")].channel_id == channel.id
     assert repo.refs[(1, "leaderboard_stats")].channel_id == channel.id
+
+
+def test_refresh_skips_duplicate_concurrent_syncs(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    service = _service(channel)
+
+    original_ensure = service._ensure_message
+
+    async def delayed_ensure(**kwargs):
+        await asyncio.sleep(0.05)
+        return await original_ensure(**kwargs)
+
+    service._ensure_message = delayed_ensure  # type: ignore[method-assign]
+
+    async def _run():
+        first = asyncio.create_task(service.refresh_guild(1))
+        await asyncio.sleep(0.01)
+        second = asyncio.create_task(service.refresh_guild(1))
+        return await asyncio.gather(first, second)
+
+    results = asyncio.run(_run())
+    assert results == [True, False]
+    assert len(channel.sends) == 2
 
 
 def test_refresh_uses_top_10_limit_for_public_leaderboard(monkeypatch: pytest.MonkeyPatch):

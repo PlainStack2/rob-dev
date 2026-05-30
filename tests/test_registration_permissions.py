@@ -4,6 +4,8 @@ import asyncio
 import inspect
 from types import SimpleNamespace
 
+import discord
+
 from rob.discord.cogs.registration import RegistrationCog
 
 
@@ -32,18 +34,23 @@ class _FakeFollowup:
 
 
 class _FakeUser:
-    def __init__(self, user_id: int = 123):
+    def __init__(self, user_id: int = 123, *, dm_forbidden: bool = False):
         self.id = user_id
+        self.display_name = f"user-{user_id}"
         self.sent_messages: list[dict] = []
+        self.dm_forbidden = dm_forbidden
 
     async def send(self, **kwargs):
+        if self.dm_forbidden:
+            response = SimpleNamespace(status=403, reason="Forbidden")
+            raise discord.Forbidden(response, "Forbidden")
         self.sent_messages.append(kwargs)
 
 
 class _FakeInteraction:
-    def __init__(self):
+    def __init__(self, *, user: _FakeUser | None = None):
         self.guild = SimpleNamespace(id=1)
-        self.user = _FakeUser()
+        self.user = user or _FakeUser()
         self.response = _FakeResponse()
         self.followup = _FakeFollowup()
 
@@ -52,12 +59,15 @@ class _FakeRegistrationService:
     def __init__(self):
         self.sub_calls: list[dict] = []
         self.domme_calls: list[dict] = []
+        self.domme_delay_seconds = 0.0
 
     async def register_sub(self, **kwargs):
         self.sub_calls.append(kwargs)
         return SimpleNamespace(sub=SimpleNamespace(send_name=kwargs["send_names"][0]), send_names=tuple(kwargs["send_names"]))
 
     async def register_domme(self, **kwargs):
+        if self.domme_delay_seconds > 0:
+            await asyncio.sleep(self.domme_delay_seconds)
         self.domme_calls.append(kwargs)
         return SimpleNamespace(
             creator=SimpleNamespace(id=99),
@@ -117,8 +127,96 @@ def test_register_domme_allowed_sends_dm_setup_flow(monkeypatch):
 
     asyncio.run(RegistrationCog.register_domme.callback(cog, interaction))
 
-    assert interaction.user.sent_messages
+    assert len(interaction.user.sent_messages) == 1
+    dm_view = interaction.user.sent_messages[0]["view"]
+    assert type(dm_view.children[1]).__name__ == "ActionRow"
+    assert dm_view.children[1].children[0].label == "Enter Throne Profile"
     assert interaction.response.messages[0]["ephemeral"] is True
+    assert bot.registration_service.domme_calls == []
+
+
+def _view_text(payload: dict) -> str:
+    view = payload.get("view")
+    if view is None:
+        return str(payload.get("content", ""))
+    chunks: list[str] = []
+    for top_level in view.children:
+        for child in getattr(top_level, "children", []):
+            content = getattr(child, "content", None)
+            if content:
+                chunks.append(str(content))
+    return "\n".join(chunks)
+
+
+def test_domme_setup_button_opens_modal_and_submit_registers_once(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.registration.member_has_role", lambda *_args, **_kwargs: True)
+    user = _FakeUser(user_id=123)
+    interaction = _FakeInteraction(user=user)
+    bot = _FakeBot(SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77))
+    cog = RegistrationCog(bot)
+
+    asyncio.run(RegistrationCog.register_domme.callback(cog, interaction))
+    dm_payload = user.sent_messages[0]
+    start_button = dm_payload["view"].children[1].children[0]
+
+    dm_click_interaction = _FakeInteraction(user=user)
+    asyncio.run(start_button.callback(dm_click_interaction))
+    modal = dm_click_interaction.response.modal
+    assert modal is not None
+    modal.throne._value = "missadore"  # noqa: SLF001
+
+    submit_interaction = _FakeInteraction(user=user)
+    asyncio.run(modal.on_submit(submit_interaction))
+
+    assert len(bot.registration_service.domme_calls) == 1
+    setup_cards = [message for message in submit_interaction.followup.messages if "Throne Tracking Setup!" in _view_text(message)]
+    assert len(setup_cards) == 1
+
+
+def test_domme_modal_double_submit_is_guarded(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.registration.member_has_role", lambda *_args, **_kwargs: True)
+    user = _FakeUser(user_id=123)
+    interaction = _FakeInteraction(user=user)
+    bot = _FakeBot(SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77))
+    bot.registration_service.domme_delay_seconds = 0.05
+    cog = RegistrationCog(bot)
+
+    asyncio.run(RegistrationCog.register_domme.callback(cog, interaction))
+    start_button = user.sent_messages[0]["view"].children[1].children[0]
+    dm_click_interaction = _FakeInteraction(user=user)
+    asyncio.run(start_button.callback(dm_click_interaction))
+    modal = dm_click_interaction.response.modal
+    assert modal is not None
+    modal.throne._value = "missadore"  # noqa: SLF001
+
+    first_submit = _FakeInteraction(user=user)
+    second_submit = _FakeInteraction(user=user)
+
+    async def _submit_twice():
+        first_task = asyncio.create_task(modal.on_submit(first_submit))
+        await asyncio.sleep(0.005)
+        second_task = asyncio.create_task(modal.on_submit(second_submit))
+        await asyncio.gather(first_task, second_task)
+
+    asyncio.run(_submit_twice())
+
+    assert len(bot.registration_service.domme_calls) == 1
+    assert second_submit.response.messages
+    second_text = _view_text(second_submit.response.messages[0])
+    assert "already being processed" in second_text
+
+
+def test_register_domme_handles_blocked_dms_with_one_ephemeral_error(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.registration.member_has_role", lambda *_args, **_kwargs: True)
+    interaction = _FakeInteraction(user=_FakeUser(user_id=123, dm_forbidden=True))
+    bot = _FakeBot(SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77))
+    cog = RegistrationCog(bot)
+
+    asyncio.run(RegistrationCog.register_domme.callback(cog, interaction))
+
+    assert len(interaction.response.messages) == 1
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "couldn't DM you" in _view_text(interaction.response.messages[0])
     assert bot.registration_service.domme_calls == []
 
 
