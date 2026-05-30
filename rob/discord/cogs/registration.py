@@ -117,6 +117,7 @@ class RegistrationCog(commands.Cog):
 
     def __init__(self, bot: RobBot) -> None:
         self.bot = bot
+        self._active_domme_submission_keys: set[tuple[int, int]] = set()
 
     async def _require_configured_role(
         self,
@@ -143,6 +144,11 @@ class RegistrationCog(commands.Cog):
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
+        log.info(
+            "/register domme invoked guild_id=%s discord_user_id=%s",
+            interaction.guild.id,
+            interaction.user.id,
+        )
 
         settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
         if not await self._require_configured_role(
@@ -159,7 +165,7 @@ class RegistrationCog(commands.Cog):
                     "Rob will ask for your Throne username/profile in a secure modal."
                 ),
                 details=[
-                    ("Next step", "Click **Continue Setup** and submit your Throne username or profile URL."),
+                    ("Next step", "Click **Enter Throne Profile** and submit your Throne username or profile URL."),
                     ("After that", "Rob will send your webhook setup steps and setup buttons."),
                 ],
             )
@@ -173,6 +179,11 @@ class RegistrationCog(commands.Cog):
                 ),
             )
             await interaction.user.send(**invite.send_kwargs())
+            log.info(
+                "Dom/me DM setup card sent guild_id=%s discord_user_id=%s",
+                interaction.guild.id,
+                interaction.user.id,
+            )
         except discord.Forbidden as exc:
             log.warning("Failed to DM Throne setup flow to user_id=%s guild_id=%s reason=Forbidden status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
             await interaction.response.send_message(**_dm_blocked_error_card().send_kwargs(), ephemeral=True)
@@ -188,7 +199,7 @@ class RegistrationCog(commands.Cog):
         await interaction.response.send_message(
             **registration_card(
                 title="Rob | Setup Sent",
-                summary="I sent your Dom/me setup flow in DMs. Open that DM and press **Continue Setup**.",
+                summary="I sent your Dom/me setup flow in DMs. Open that DM and press **Enter Throne Profile**.",
             ).send_kwargs(),
             ephemeral=True,
         )
@@ -207,6 +218,13 @@ class RegistrationCog(commands.Cog):
                 guild_id=guild_id,
                 discord_user_id=discord_user_id,
                 throne_input=throne_input,
+            )
+            domme_result = getattr(result, "domme", None) or getattr(result, "creator", None)
+            log.info(
+                "Dom/me registration upserted guild_id=%s discord_user_id=%s domme_id=%s",
+                guild_id,
+                discord_user_id,
+                getattr(domme_result, "id", None),
             )
         except ValueError as exc:
             await interaction.followup.send(**error_card("Dom/me registration could not be completed.", str(exc)).send_kwargs())
@@ -239,6 +257,12 @@ class RegistrationCog(commands.Cog):
             send_track_channel_id=send_track_channel_id,
         )
         await interaction.followup.send(**dm_msg.send_kwargs())
+        log.info(
+            "Dom/me webhook setup card sent guild_id=%s discord_user_id=%s domme_id=%s",
+            guild_id,
+            discord_user_id,
+            int(domme_result.id),
+        )
 
         achievements_service = getattr(self.bot, "achievements_service", None)
         if achievements_service is not None:
@@ -298,7 +322,7 @@ class _DommeSetupStartButton(discord.ui.Button):
         discord_user_id: int,
         send_track_channel_id: int | None,
     ) -> None:
-        super().__init__(label="Continue Setup", style=discord.ButtonStyle.primary)
+        super().__init__(label="Enter Throne Profile", style=discord.ButtonStyle.primary)
         self.cog = cog
         self.guild_id = guild_id
         self.discord_user_id = discord_user_id
@@ -311,6 +335,11 @@ class _DommeSetupStartButton(discord.ui.Button):
                 ephemeral=True,
             )
             return
+        log.info(
+            "Dom/me setup modal opened guild_id=%s discord_user_id=%s",
+            self.guild_id,
+            self.discord_user_id,
+        )
         await interaction.response.send_modal(
             _DommeRegistrationModal(
                 cog=self.cog,
@@ -351,14 +380,34 @@ class _DommeRegistrationModal(discord.ui.Modal, title="Rob | Dom/me Setup"):
             )
             return
 
-        await interaction.response.defer()
-        await self.cog._complete_domme_registration(
-            interaction=interaction,
-            guild_id=self.guild_id,
-            discord_user_id=self.discord_user_id,
-            send_track_channel_id=self.send_track_channel_id,
-            throne_input=str(self.throne.value),
+        flow_key = (self.guild_id, self.discord_user_id)
+        if flow_key in self.cog._active_domme_submission_keys:
+            await interaction.response.send_message(
+                **error_card(
+                    "Dom/me setup is already being processed.",
+                    "Give Rob a second to finish the previous submission.",
+                ).send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        self.cog._active_domme_submission_keys.add(flow_key)
+        log.info(
+            "Dom/me modal submitted guild_id=%s discord_user_id=%s",
+            self.guild_id,
+            self.discord_user_id,
         )
+        await interaction.response.defer()
+        try:
+            await self.cog._complete_domme_registration(
+                interaction=interaction,
+                guild_id=self.guild_id,
+                discord_user_id=self.discord_user_id,
+                send_track_channel_id=self.send_track_channel_id,
+                throne_input=str(self.throne.value),
+            )
+        finally:
+            self.cog._active_domme_submission_keys.discard(flow_key)
 
 
 class _SubRegistrationModal(discord.ui.Modal, title="Rob | Sub Registration"):

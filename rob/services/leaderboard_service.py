@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import discord
@@ -37,119 +38,98 @@ class LeaderboardService:
         self.include_test_sends = include_test_sends
         self.test_gifter_usernames = test_gifter_usernames
         self.owner_test_user_id = owner_test_user_id
+        self._refresh_locks: dict[int, asyncio.Lock] = {}
 
     async def refresh_all_guilds(self) -> None:
         for guild_id in await self.guild_settings.list_guild_ids():
             await self.refresh_guild(guild_id)
 
     async def refresh_guild(self, guild_id: int) -> bool:
-        log.info("Refreshing leaderboard for guild_id=%s", guild_id)
-        settings = await self.guild_settings.get(guild_id)
-        if settings is None or settings.leaderboard_channel_id is None:
-            log.warning("Skipping leaderboard refresh for guild_id=%s: leaderboard channel not configured.", guild_id)
+        lock = self._refresh_locks.setdefault(guild_id, asyncio.Lock())
+        if lock.locked():
+            log.info("Leaderboard sync skipped; another sync is already running for guild_id=%s", guild_id)
             return False
 
-        guild = self.bot.get_guild(guild_id)
-        if guild is None:
-            log.warning("Guild %s is not available for leaderboard refresh.", guild_id)
-            return False
-
-        channel = guild.get_channel(settings.leaderboard_channel_id)
-        if channel is None:
-            try:
-                channel = await guild.fetch_channel(settings.leaderboard_channel_id)
-            except (discord.NotFound, discord.HTTPException):
+        async with lock:
+            log.info("Leaderboard sync started for guild_id=%s", guild_id)
+            settings = await self.guild_settings.get(guild_id)
+            if settings is None or settings.leaderboard_channel_id is None:
                 log.warning(
-                    "Leaderboard channel %s is unavailable in guild %s.",
-                    settings.leaderboard_channel_id,
+                    "Skipping leaderboard refresh for guild_id=%s: leaderboard channel not configured.",
                     guild_id,
                 )
                 return False
-        if not isinstance(channel, discord.TextChannel):
-            log.warning(
-                "Skipping leaderboard refresh for guild_id=%s: leaderboard channel %s is not a text channel.",
-                guild_id,
-                settings.leaderboard_channel_id,
-            )
-            return False
-        summary = await self.leaderboards.get_summary(
-            guild_id,
-            include_test_sends=self.include_test_sends,
-            test_gifter_usernames=self.test_gifter_usernames,
-            owner_test_user_id=self.owner_test_user_id,
-        )
-        log.info(
-            "Registered Dom/mes loaded=%s guild_id=%s",
-            summary.domme_count,
-            guild_id,
-        )
-        dommes = await self.leaderboards.get_top_dommes(
-            guild_id,
-            limit=min(self.leaderboard_limit, 10),
-            include_test_sends=self.include_test_sends,
-            test_gifter_usernames=self.test_gifter_usernames,
-            owner_test_user_id=self.owner_test_user_id,
-        )
-        log.info(
-            "Leaderboard entries rendered=%s leaderboard_limit=%s guild_id=%s",
-            len(dommes),
-            min(self.leaderboard_limit, 10),
-            guild_id,
-        )
-        dommes_msg = leaderboard_card(
-            title="ignored",
-            entries=dommes,
-            summary=summary,
-            status=await self.maintenance.get_leaderboard_status(),
-        )
-        stats_msg = leaderboard_stats_card(summary, dommes)
 
-        existing_main = await self._get_existing_message(
-            guild_id=guild_id,
-            channel=channel,
-            message_key="leaderboard",
-        )
-        existing_stats = await self._get_existing_message(
-            guild_id=guild_id,
-            channel=channel,
-            message_key="leaderboard_stats",
-        )
-        if existing_main is None or existing_stats is None:
-            log.info(
-                "Leaderboard pair missing for guild_id=%s (main_present=%s stats_present=%s). Creating new leaderboard + stats pair.",
-                guild_id,
-                existing_main is not None,
-                existing_stats is not None,
-            )
-            main_message = await channel.send(**dommes_msg.send_kwargs())
-            stats_message = await channel.send(**stats_msg.send_kwargs())
-        else:
-            log.info(
-                "Updating existing leaderboard pair for guild_id=%s main_message_id=%s stats_message_id=%s",
-                guild_id,
-                existing_main.id,
-                existing_stats.id,
-            )
-            await existing_main.edit(**dommes_msg.edit_kwargs())
-            await existing_stats.edit(**stats_msg.edit_kwargs())
-            main_message = existing_main
-            stats_message = existing_stats
+            guild = self.bot.get_guild(guild_id)
+            if guild is None:
+                log.warning("Guild %s is not available for leaderboard refresh.", guild_id)
+                return False
 
-        await self._upsert_ref(
-            guild_id=guild_id,
-            message_key="leaderboard",
-            leaderboard_type="leaderboard",
-            channel_id=channel.id,
-            message_id=main_message.id,
-        )
-        await self._upsert_ref(
-            guild_id=guild_id,
-            message_key="leaderboard_stats",
-            leaderboard_type="leaderboard_stats",
-            channel_id=channel.id,
-            message_id=stats_message.id,
-        )
-        return True
+            channel = guild.get_channel(settings.leaderboard_channel_id)
+            if channel is None:
+                try:
+                    channel = await guild.fetch_channel(settings.leaderboard_channel_id)
+                except (discord.NotFound, discord.HTTPException):
+                    log.warning(
+                        "Leaderboard channel %s is unavailable in guild %s.",
+                        settings.leaderboard_channel_id,
+                        guild_id,
+                    )
+                    return False
+            if not isinstance(channel, discord.TextChannel):
+                log.warning(
+                    "Skipping leaderboard refresh for guild_id=%s: leaderboard channel %s is not a text channel.",
+                    guild_id,
+                    settings.leaderboard_channel_id,
+                )
+                return False
+            summary = await self.leaderboards.get_summary(
+                guild_id,
+                include_test_sends=self.include_test_sends,
+                test_gifter_usernames=self.test_gifter_usernames,
+                owner_test_user_id=self.owner_test_user_id,
+            )
+            log.info(
+                "Registered Dom/mes loaded=%s guild_id=%s",
+                summary.domme_count,
+                guild_id,
+            )
+            dommes = await self.leaderboards.get_top_dommes(
+                guild_id,
+                limit=min(self.leaderboard_limit, 10),
+                include_test_sends=self.include_test_sends,
+                test_gifter_usernames=self.test_gifter_usernames,
+                owner_test_user_id=self.owner_test_user_id,
+            )
+            log.info(
+                "Leaderboard entries rendered=%s leaderboard_limit=%s guild_id=%s",
+                len(dommes),
+                min(self.leaderboard_limit, 10),
+                guild_id,
+            )
+            dommes_msg = leaderboard_card(
+                title="ignored",
+                entries=dommes,
+                summary=summary,
+                status=await self.maintenance.get_leaderboard_status(),
+            )
+            stats_msg = leaderboard_stats_card(summary, dommes)
+
+            main_ok = await self._ensure_message(
+                guild_id=guild_id,
+                channel=channel,
+                message_key="leaderboard",
+                leaderboard_type="leaderboard",
+                rendered=dommes_msg,
+            )
+            stats_ok = await self._ensure_message(
+                guild_id=guild_id,
+                channel=channel,
+                message_key="leaderboard_stats",
+                leaderboard_type="leaderboard_stats",
+                rendered=stats_msg,
+            )
+            return main_ok and stats_ok
 
     async def get_current_leader(self, guild_id: int):
         leader = await self.leaderboards.get_current_leader(
@@ -205,43 +185,122 @@ class LeaderboardService:
         await self.bot_state.set_value(state_key, str(current_leader.user_id))
         return True
 
-    async def _get_existing_message(
+    async def _create_and_save_message(
         self,
         *,
         guild_id: int,
         channel: discord.TextChannel,
         message_key: str,
-    ) -> discord.Message | None:
+        leaderboard_type: str,
+        rendered,
+    ) -> bool:
+        message = await channel.send(**rendered.send_kwargs())
+        await self._upsert_ref(
+            guild_id=guild_id,
+            message_key=message_key,
+            leaderboard_type=leaderboard_type,
+            channel_id=channel.id,
+            message_id=message.id,
+        )
+        log.info(
+            "Leaderboard message ID saved guild_id=%s key=%s channel_id=%s message_id=%s",
+            guild_id,
+            message_key,
+            channel.id,
+            message.id,
+        )
+        return True
+
+    async def _ensure_message(
+        self,
+        *,
+        guild_id: int,
+        channel: discord.TextChannel,
+        message_key: str,
+        leaderboard_type: str,
+        rendered,
+    ) -> bool:
         ref = await self.leaderboards.get_message(guild_id, message_key)
         if ref is None:
             log.info(
-                "No leaderboard ref exists for guild_id=%s key=%s",
+                "No leaderboard message configured; creating initial message guild_id=%s key=%s",
                 guild_id,
                 message_key,
             )
-            return None
+            return await self._create_and_save_message(
+                guild_id=guild_id,
+                channel=channel,
+                message_key=message_key,
+                leaderboard_type=leaderboard_type,
+                rendered=rendered,
+            )
 
+        log.info(
+            "Loaded leaderboard config guild_id=%s key=%s channel_id=%s message_id=%s",
+            guild_id,
+            message_key,
+            ref.channel_id,
+            ref.message_id,
+        )
         if ref.channel_id != channel.id:
             log.info(
-                "Leaderboard ref channel mismatch for guild_id=%s key=%s ref_channel_id=%s configured_channel_id=%s. Recreating pair in configured channel.",
+                "Leaderboard ref channel mismatch for guild_id=%s key=%s ref_channel_id=%s configured_channel_id=%s. Creating replacement in configured channel.",
                 guild_id,
                 message_key,
                 ref.channel_id,
                 channel.id,
             )
-            return None
+            return await self._create_and_save_message(
+                guild_id=guild_id,
+                channel=channel,
+                message_key=message_key,
+                leaderboard_type=leaderboard_type,
+                rendered=rendered,
+            )
 
+        message = channel.get_partial_message(ref.message_id)
         try:
-            return await channel.fetch_message(ref.message_id)
-        except (discord.NotFound, discord.HTTPException, KeyError):
+            await message.edit(**rendered.edit_kwargs())
             log.info(
-                "Referenced leaderboard message missing for guild_id=%s key=%s channel_id=%s message_id=%s; creating replacement.",
+                "Found existing leaderboard message; edited in place guild_id=%s key=%s message_id=%s",
+                guild_id,
+                message_key,
+                ref.message_id,
+            )
+            return True
+        except (discord.NotFound, KeyError):
+            log.info(
+                "Leaderboard message missing; creating one replacement guild_id=%s key=%s channel_id=%s message_id=%s",
                 guild_id,
                 message_key,
                 ref.channel_id,
                 ref.message_id,
             )
-            return None
+            return await self._create_and_save_message(
+                guild_id=guild_id,
+                channel=channel,
+                message_key=message_key,
+                leaderboard_type=leaderboard_type,
+                rendered=rendered,
+            )
+        except discord.Forbidden:
+            log.warning(
+                "Leaderboard sync could not edit existing message due to permissions guild_id=%s key=%s channel_id=%s message_id=%s",
+                guild_id,
+                message_key,
+                ref.channel_id,
+                ref.message_id,
+            )
+            return False
+        except discord.HTTPException:
+            log.exception(
+                "Leaderboard sync failed to edit existing message guild_id=%s key=%s channel_id=%s message_id=%s",
+                guild_id,
+                message_key,
+                ref.channel_id,
+                ref.message_id,
+            )
+            return False
 
     async def _upsert_ref(
         self,
