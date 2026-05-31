@@ -56,9 +56,10 @@ def achievements_overview_cards(
     for_self: bool,
     newly_unlocked_count: int | None = None,
 ) -> list[RenderedMessage]:
+    require_components_v2()
     unlocked_total = len(unlocked_achievements)
     page_count = max(1, math.ceil(unlocked_total / _ENTRIES_PER_PAGE)) if unlocked_total else 1
-    summary_line = f"Achievements unlocked: {unlocked_total}/{len(ENABLED_ACHIEVEMENTS)}"
+    summary_line = f"Achievements unlocked: **{unlocked_total}/{len(ENABLED_ACHIEVEMENTS)}**"
     if newly_unlocked_count and newly_unlocked_count > 0:
         summary_line = f"{summary_line} +{newly_unlocked_count}"
     subtitle = "Your unlocked achievements" if for_self else f"{display_name}'s unlocked achievements"
@@ -67,29 +68,40 @@ def achievements_overview_cards(
     for index in range(page_count):
         start = index * _ENTRIES_PER_PAGE
         page_achievements = unlocked_achievements[start : start + _ENTRIES_PER_PAGE]
-
-        embed = discord.Embed(
-            title="Rob Achievements",
-            description=f"{summary_line}\n{subtitle}",
-            colour=COLOR_ROB_PURPLE,
-        )
-        embed.set_footer(text=f"Page {index + 1}/{page_count}")
+        view = discord.ui.LayoutView(timeout=1800)
+        children: list[discord.ui.Item] = [
+            discord.ui.TextDisplay("## Rob Achievements"),
+            discord.ui.Separator(),
+            discord.ui.TextDisplay(summary_line),
+            discord.ui.TextDisplay(subtitle),
+            discord.ui.Separator(),
+        ]
 
         if not page_achievements:
             empty_state = "You have not unlocked any achievements yet."
             if not for_self:
                 empty_state = f"{display_name} has not unlocked any achievements yet."
-            embed.add_field(
-                name="Nothing here yet",
-                value=f"{empty_state}\nGo do something suspiciously Rob-shaped.",
-                inline=False,
+            children.extend(
+                [
+                    discord.ui.TextDisplay(empty_state),
+                    discord.ui.TextDisplay("Go do something suspiciously Rob-shaped."),
+                ]
             )
-            cards.append(RenderedMessage(embeds=[embed], view=discord.ui.View(timeout=1800), mode="embed"))
-            continue
+        else:
+            for achievement in page_achievements:
+                children.append(
+                    discord.ui.TextDisplay(
+                        f"**{achievement.title}**\n{achievement.description}"
+                    )
+                )
 
-        for achievement in page_achievements:
-            embed.add_field(name=achievement.title, value=achievement.description, inline=True)
-
-        cards.append(RenderedMessage(embeds=[embed], view=discord.ui.View(timeout=1800), mode="embed"))
+        children.extend(
+            [
+                discord.ui.Separator(),
+                discord.ui.TextDisplay(f"-# Page {index + 1}/{page_count}"),
+            ]
+        )
+        view.add_item(discord.ui.Container(*children, accent_color=COLOR_ROB_PURPLE))
+        cards.append(RenderedMessage(view=view))
 
     return cards

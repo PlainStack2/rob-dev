@@ -172,6 +172,29 @@ def _message_text(payload: dict) -> str:
     )
 
 
+def _button_labels(payload: dict) -> list[str]:
+    view = payload["view"]
+    labels: list[str] = []
+    for child in view.children:
+        for nested in getattr(child, "children", []):
+            label = getattr(nested, "label", None)
+            if label is not None:
+                labels.append(str(label))
+    return labels
+
+
+def _buttons(payload: dict):
+    view = payload["view"]
+    buttons = []
+    for child in view.children:
+        buttons.extend(
+            nested
+            for nested in getattr(child, "children", [])
+            if getattr(nested, "label", None) is not None
+        )
+    return buttons
+
+
 def test_achievements_command_shows_only_unlocked_entries_publicly():
     bot = _FakeBot(unlocked_keys={"count_10"})
     cog = AchievementsCog(bot)  # type: ignore[arg-type]
@@ -185,7 +208,7 @@ def test_achievements_command_shows_only_unlocked_entries_publicly():
     text = _message_text(payload)
     assert "Rob Achievements" in text
     assert "Double Digits" in text
-    assert "Achievements unlocked: 1/" in text
+    assert "Achievements unlocked: **1/" in text
     assert "The 67 Incident" not in text
     assert "You said 67." not in text
 
@@ -216,9 +239,9 @@ def test_achievements_command_shows_empty_state_when_none_unlocked():
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
     text = _message_text(interaction.response.messages[0])
-    assert "Achievements unlocked: 0/" in text
+    assert "Achievements unlocked: **0/" in text
     assert "Your unlocked achievements" in text
-    assert "Nothing here yet" in text
+    assert "You have not unlocked any achievements yet." in text
     assert "Double Digits" not in text
 
 
@@ -294,9 +317,9 @@ def test_achievements_command_adds_pagination_buttons_after_ten_entries():
 
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
-    view = interaction.response.messages[0]["view"]
-    buttons = view.children
-    assert [button.label for button in buttons] == ["Previous", "Next"]
+    payload = interaction.response.messages[0]
+    buttons = _buttons(payload)
+    assert _button_labels(payload) == ["Previous", "Next"]
     assert buttons[0].disabled is True
     assert buttons[1].disabled is False
 
@@ -309,8 +332,8 @@ def test_achievements_pagination_rejects_other_users():
     interaction = _FakeInteraction(user=owner, guild=_FakeGuild(1), channel=_FakeChannel())
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
-    view = interaction.response.messages[0]["view"]
-    next_button = view.children[1]
+    payload = interaction.response.messages[0]
+    next_button = _buttons(payload)[1]
 
     intruder = _FakeMember(user_id=99, display_name="Intruder", role_ids=[], manage_guild=False)
     intruder_interaction = _FakeInteraction(user=intruder, guild=_FakeGuild(1), channel=_FakeChannel())
