@@ -256,7 +256,26 @@ class _FakeBotSettings:
         self.values[key] = value
 
 
-def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild):
+class _FakeAchievements:
+    def __init__(self):
+        self.unlock_calls: list[str] = []
+
+    async def unlock_achievement(self, **kwargs):
+        self.unlock_calls.append(str(kwargs["achievement_key"]))
+        callback = kwargs.get("on_unlocked")
+        if callback is not None:
+            achievement = SimpleNamespace(
+                title=str(kwargs["achievement_key"]),
+                description=f"Unlocked {kwargs['achievement_key']}",
+                key=str(kwargs["achievement_key"]),
+                category="count",
+                rarity="common",
+            )
+            await callback(achievement)
+        return True
+
+
+def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild, achievements=None):
     bot_settings = _FakeBotSettings()
     return CountingService(
         bot=_FakeBot(guild),
@@ -264,7 +283,7 @@ def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild):
         guild_settings=_FakeGuildSettingsRepo(),
         dommes=_FakeDommesRepo(),
         bot_settings=bot_settings,
-        achievements=None,
+        achievements=achievements,
         rescue_tick_seconds=1,
         rescue_window_seconds=300,
         block_seconds=12 * 60 * 60,
@@ -291,8 +310,9 @@ def _make_setup():
     )
     guild = _FakeGuild(1, channel, [domme, domme_alt, sub, claimed_sub])
     repo = _FakeCountingRepo()
-    service = _service(repo=repo, guild=guild)
-    return service, repo, channel, guild, domme, domme_alt, sub, claimed_sub
+    achievements = _FakeAchievements()
+    service = _service(repo=repo, guild=guild, achievements=achievements)
+    return service, repo, channel, guild, domme, domme_alt, sub, claimed_sub, achievements
 
 
 def test_basic_math_expression_parser_accepts_valid_cases():
@@ -317,7 +337,7 @@ def test_basic_math_expression_parser_rejects_unsafe_or_invalid_cases(expression
 
 
 def test_non_numeric_and_invalid_math_messages_are_ignored():
-    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 3, 9, True, False, datetime.now(timezone.utc))
 
     ignored_plain = asyncio.run(
@@ -337,7 +357,7 @@ def test_non_numeric_and_invalid_math_messages_are_ignored():
 
 
 def test_existing_stale_count_state_auto_syncs_to_configured_channel():
-    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, None, 0, None, False, False, datetime.now(timezone.utc))
 
     result = asyncio.run(
@@ -354,7 +374,7 @@ def test_existing_stale_count_state_auto_syncs_to_configured_channel():
 
 
 def test_successful_count_returns_standard_high_score_and_special_reactions():
-    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 66, 9, True, False, datetime.now(timezone.utc))
     service.bot_settings.values["count_high_watermark:1"] = "66"
 
@@ -370,8 +390,30 @@ def test_successful_count_returns_standard_high_score_and_special_reactions():
     assert service.bot_settings.values["count_high_watermark:1"] == "67"
 
 
+def test_successful_count_posts_achievement_card_when_new_unlocks_occur():
+    service, repo, channel, guild, _domme, _domme_alt, sub, _claimed_sub, achievements = _make_setup()
+    repo.state = CountingState(1, 100, 0, None, True, False, datetime.now(timezone.utc))
+
+    result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="1", channel=guild.get_channel(100))
+        )
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert "count_start" in achievements.unlock_calls
+    rendered = "\n".join(
+        str(getattr(item, "content", ""))
+        for container in channel.sent[0]["view"].children
+        for item in getattr(container, "children", [])
+    )
+    assert "count_start" in rendered
+    assert "Achievements Unlock by Subby" in rendered
+
+
 def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers():
-    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
     message = _FakeMessageEvent(guild=service.bot.get_guild(1), author=domme, content="99", channel=service.bot.get_guild(1).get_channel(100))
 
@@ -403,7 +445,7 @@ def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers(
 
 
 def test_domme_recovery_expiry_resets_count_to_one_visible_start():
-    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
     message = _FakeMessageEvent(guild=service.bot.get_guild(1), author=domme, content="99", channel=service.bot.get_guild(1).get_channel(100))
     asyncio.run(service.process_message(message))
@@ -432,7 +474,7 @@ def test_domme_recovery_expiry_resets_count_to_one_visible_start():
 
 
 def test_sub_recovery_unclaimed_allows_any_domme_but_claimed_requires_claimed_domme():
-    service, repo, _channel, guild, _domme, domme_alt, sub, claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, domme_alt, sub, claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
 
     unclaimed_message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
@@ -490,7 +532,7 @@ def test_sub_recovery_unclaimed_allows_any_domme_but_claimed_requires_claimed_do
 
 
 def test_sub_recovery_expiry_creates_12h_block_and_blocked_sub_cannot_count():
-    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 3, 9, True, False, datetime.now(timezone.utc))
     message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
     asyncio.run(service.process_message(message))
@@ -542,7 +584,7 @@ def test_sub_recovery_expiry_creates_12h_block_and_blocked_sub_cannot_count():
 
 
 def test_recovery_windows_are_restart_safe_and_expiry_resolution_is_idempotent():
-    service, repo, _channel, guild, _domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    service, repo, _channel, guild, _domme, _domme_alt, _sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 15, 8, True, False, datetime.now(timezone.utc))
     now = datetime.now(timezone.utc)
     repo.windows[1] = CountRecoveryWindow(

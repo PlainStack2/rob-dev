@@ -14,7 +14,7 @@ from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.sends import SendsRepository
 from rob.services.maintenance_service import MaintenanceService
-from rob.services.bot_notify_client import notify_bot_send
+from rob.services.bot_notify_client import notify_bot_achievement, notify_bot_send
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
 from rob.throne.payloads import is_explicit_test_webhook_payload, is_known_test_sender, is_supported_event_type, parse_throne_send_payload
@@ -93,14 +93,30 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     known_test_sender = is_known_test_sender(parsed.gifter_username, test_gifter_usernames=set(settings.throne_test_gifter_usernames))
     if explicit_test:
         await dommes.mark_setup_verified(matched_creator.id)
-        await achievements.unlock_achievement(
+        unlocked = await achievements.unlock_achievement(
             guild_id=matched_creator.guild_id,
             discord_user_id=matched_creator.discord_user_id,
             achievement_key="throne_test_webhook",
             source="throne:webhook_test",
             metadata={"creator_id": creator_id},
         )
-        return web.json_response({"ok": True, "setup_verified": True})
+        achievement_announced = False
+        if unlocked:
+            achievement_announced = await notify_bot_achievement(
+                notify_url=settings.rob_bot_notify_url,
+                secret=settings.rob_ops_secret,
+                guild_id=matched_creator.guild_id,
+                discord_user_id=matched_creator.discord_user_id,
+                achievement_key="throne_test_webhook",
+                display_name=matched_creator.public_display_name,
+            )
+        return web.json_response(
+            {
+                "ok": True,
+                "setup_verified": True,
+                "achievement_announced": achievement_announced,
+            }
+        )
     if known_test_sender and not settings.throne_parse_test_sends_as_real_sends:
         await dommes.mark_setup_verified(matched_creator.id)
     if known_test_sender and settings.throne_parse_test_sends_as_real_sends:

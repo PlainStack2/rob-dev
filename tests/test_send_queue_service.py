@@ -97,16 +97,27 @@ class _FakeMessage:
 
 
 class _FakeChannel:
+    def __init__(self):
+        self.sent: list[dict] = []
+
     async def send(self, **_kwargs):
+        self.sent.append(_kwargs)
         return _FakeMessage(555)
 
 
 class _FakeGuild:
     def __init__(self):
         self.channel = _FakeChannel()
+        self.members = {
+            10: SimpleNamespace(display_name="Miss Adore"),
+            20: SimpleNamespace(display_name="Pat"),
+        }
 
     def get_channel(self, _channel_id: int):
         return self.channel
+
+    def get_member(self, user_id: int):
+        return self.members.get(user_id)
 
 
 class _FakeBot:
@@ -152,6 +163,39 @@ class _FakeCounting:
         self.calls += 1
         self.send_ids.append(send.id)
         return False
+
+
+class _FakeAchievements:
+    def __init__(self):
+        self.unlock_calls: list[str] = []
+
+    async def unlock_achievement(self, **kwargs):
+        self.unlock_calls.append(str(kwargs["achievement_key"]))
+        callback = kwargs.get("on_unlocked")
+        if callback is not None:
+            achievement = SimpleNamespace(
+                title=str(kwargs["achievement_key"]),
+                description=f"Unlocked {kwargs['achievement_key']}",
+                key=str(kwargs["achievement_key"]),
+                category="sends_domme",
+                rarity="common",
+            )
+            await callback(achievement)
+        return True
+
+    async def get_user_achievement_keys(self, **_kwargs):
+        return set()
+
+
+class _FakeAchievementLeaderboards:
+    async def get_domme_stats(self, *_args, **_kwargs):
+        return SimpleNamespace(total_cents=10_000, send_count=1)
+
+    async def get_domme_rank(self, *_args, **_kwargs):
+        return None
+
+    async def get_sub_stats(self, *_args, **_kwargs):
+        return SimpleNamespace(total_cents=10_000, send_count=1)
 
 
 def test_send_queue_refreshes_after_successful_send_post(monkeypatch: pytest.MonkeyPatch):
@@ -326,3 +370,36 @@ def test_send_queue_processes_notified_send_by_id(monkeypatch: pytest.MonkeyPatc
     assert sends.mark_posted_calls == [1]
     assert leaderboard.refresh_calls == [1]
     assert counting.send_ids == [1]
+
+
+def test_send_queue_posts_achievement_cards_after_send(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.send_queue_service.discord.TextChannel", _FakeChannel)
+    sends = _FakeSends()
+    leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
+    achievements = _FakeAchievements()
+    achievement_leaderboards = _FakeAchievementLeaderboards()
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(),
+        maintenance=_FakeMaintenance(),
+        leaderboard_service=leaderboard,
+        counting_service=counting,
+        achievements=achievements,
+        leaderboards=achievement_leaderboards,
+    )
+
+    ok = asyncio.run(service.process_send_by_id(1))
+
+    assert ok is True
+    channel = service.bot.guild.channel
+    assert len(channel.sent) >= 2
+    rendered = "\n".join(
+        str(getattr(item, "content", ""))
+        for payload in channel.sent[1:]
+        for container in payload["view"].children
+        for item in getattr(container, "children", [])
+    )
+    assert "domme_first_tracked_send" in rendered
+    assert "Achievements Unlock by Miss Adore" in rendered
