@@ -23,6 +23,7 @@ from rob.database.repositories import (
 )
 from rob.discord.cogs.admin_tools import AdminToolsCog
 from rob.discord.cogs.achievements import AchievementsCog
+from rob.discord.cogs.activity_tracker import ActivityTrackerCog
 from rob.discord.cogs.counting import CountingCog
 from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
@@ -169,6 +170,7 @@ class RobBot(commands.Bot):
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
         await self.add_cog(AchievementsCog(self))
+        await self.add_cog(ActivityTrackerCog(self))
         await self.add_cog(CountingCog(self))
         await self.add_cog(ReportsCog(self))
         await self.add_cog(InactivityCog(self))

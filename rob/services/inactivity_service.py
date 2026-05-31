@@ -176,8 +176,8 @@ class InactivityService:
         if inactive_role is None:
             return []
 
-        members = [member for member in inactive_role.members if self._is_eligible_member(member)]
-        if not members:
+        all_members = [member for member in guild.members if self._is_eligible_member(member)]
+        if not all_members:
             return []
 
         now = datetime.now(timezone.utc)
@@ -185,24 +185,76 @@ class InactivityService:
         is_bootstrap_run = bootstrapped_at is None
         snapshots: list[InactivitySnapshot] = []
 
-        for member in members:
+        for member in all_members:
             state = await self._load_member_state(guild_id, member.id)
             assigned_at = state["assigned_at"] if isinstance(state["assigned_at"], datetime) else None
             remove_at = state["remove_at"] if isinstance(state["remove_at"], datetime) else None
             initial_notice_sent = bool(state["initial_notice_sent"])
             final_notice_sent = bool(state["final_notice_sent"])
 
+            last_activity_iso = await self.bot_state.get_text(
+                f"activity:{guild_id}:user:{member.id}:last_active"
+            )
+            last_activity = self._parse_optional_datetime(last_activity_iso)
+
             if assigned_at is None or remove_at is None:
-                if member.joined_at is not None and member.joined_at.tzinfo is not None and (now - member.joined_at) <= self.bootstrap_grace:
+                if last_activity is not None:
+                    assigned_at = last_activity
+                elif member.joined_at is not None and member.joined_at.tzinfo is not None:
                     assigned_at = member.joined_at
-                    remove_at = assigned_at + self.new_member_grace + self.assignment_grace
                 else:
                     assigned_at = now
-                    grace = self.bootstrap_grace if is_bootstrap_run else self.assignment_grace
-                    remove_at = now + grace
+                grace = self.bootstrap_grace if is_bootstrap_run else self.assignment_grace
+                remove_at = assigned_at + grace
                 initial_notice_sent = False
                 final_notice_sent = False
-                await self._save_member_state(guild_id, member.id, assigned_at=assigned_at, remove_at=remove_at, initial_notice_sent=False, final_notice_sent=False)
+                await self._save_member_state(
+                    guild_id,
+                    member.id,
+                    assigned_at=assigned_at,
+                    remove_at=remove_at,
+                    initial_notice_sent=False,
+                    final_notice_sent=False,
+                )
+            else:
+                if last_activity is not None and last_activity > assigned_at:
+                    await self.clear_member_state(guild_id, member.id)
+                    if inactive_role in member.roles:
+                        try:
+                            await member.remove_roles(inactive_role)
+                            log.info(
+                                "Removed inactive role from active member user_id=%s guild_id=%s",
+                                member.id,
+                                guild_id,
+                            )
+                        except discord.Forbidden:
+                            log.warning(
+                                "Could not remove inactive role from user_id=%s (permission denied)",
+                                member.id,
+                            )
+                        except discord.HTTPException:
+                            log.warning(
+                                "Failed to remove inactive role from user_id=%s",
+                                member.id,
+                                exc_info=True,
+                            )
+                    continue
+
+            if now >= remove_at and inactive_role not in member.roles:
+                try:
+                    await member.add_roles(inactive_role)
+                    log.info("Added inactive role to user_id=%s guild_id=%s", member.id, guild_id)
+                except discord.Forbidden:
+                    log.warning(
+                        "Could not assign inactive role to user_id=%s (permission denied)",
+                        member.id,
+                    )
+                except discord.HTTPException:
+                    log.warning(
+                        "Failed to assign inactive role to user_id=%s",
+                        member.id,
+                        exc_info=True,
+                    )
 
             first_warning_due_at = self._first_warning_due_at(assigned_at, remove_at)
             if send_notifications and not initial_notice_sent and now >= first_warning_due_at:

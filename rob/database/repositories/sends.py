@@ -238,6 +238,24 @@ class SendsRepository:
             )
         return int(result.rsplit(" ", 1)[-1])
 
+    async def update_status(self, send_id: int, status: str) -> bool:
+        """Update the discord_post_status of a send."""
+        if status not in self.VALID_STATUSES:
+            raise ValueError(f"Invalid status: {status}. Must be one of {self.VALID_STATUSES}")
+
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE sends
+                SET discord_post_status = $1
+                WHERE id = $2
+                RETURNING id
+                """,
+                status,
+                send_id,
+            )
+        return row is not None
+
     async def mark_posted(self, send_id: int, *, message_id: int | None) -> None:
         async with self.database.acquire() as connection:
             await connection.execute(

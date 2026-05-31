@@ -45,7 +45,7 @@ class _FakeMaintenance:
 
 
 class _FakeMember:
-    def __init__(self, user_id: int, *, joined_at: datetime | None = None):
+    def __init__(self, user_id: int, *, joined_at: datetime | None = None, roles: list["_FakeRole"] | None = None):
         self.id = user_id
         self.bot = False
         self.nick = None
@@ -55,6 +55,7 @@ class _FakeMember:
         self.dm_messages: list[dict[str, object]] = []
         self.kicked = False
         self.joined_at = joined_at
+        self.roles = list(roles or [])
 
     async def send(self, content=None, view=None, **kwargs):
         self.dm_messages.append({"content": content, "view": view, **kwargs})
@@ -62,6 +63,14 @@ class _FakeMember:
     async def kick(self, *, reason: str):
         del reason
         self.kicked = True
+
+    async def add_roles(self, *roles):
+        for role in roles:
+            if role not in self.roles:
+                self.roles.append(role)
+
+    async def remove_roles(self, *roles):
+        self.roles = [role for role in self.roles if role not in roles]
 
 
 class _FakeRole:
@@ -75,6 +84,7 @@ class _FakeGuild:
         self.id = guild_id
         self._role = role
         self.name = name
+        self.members = list(role.members)
 
     def get_role(self, role_id: int):
         if self._role.id == role_id:
@@ -111,8 +121,10 @@ def _view_text(payload: dict[str, object]) -> str:
 
 def test_new_member_grace_no_immediate_warning():
     joined_at = datetime.now(timezone.utc)
-    member = _FakeMember(10, joined_at=joined_at)
-    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, joined_at=joined_at, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
     bot_state = _FakeBotState()
     service = _service(bot_state=bot_state, inactive_role_id=99)
     asyncio.run(service.set_enabled(1, True))
@@ -125,8 +137,10 @@ def test_new_member_grace_no_immediate_warning():
 
 def test_new_member_warning_after_seven_days_contains_timestamps():
     joined_at = datetime.now(timezone.utc) - timedelta(days=8)
-    member = _FakeMember(10, joined_at=joined_at)
-    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, joined_at=joined_at, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
     bot_state = _FakeBotState()
     service = _service(bot_state=bot_state, inactive_role_id=99)
     asyncio.run(service.set_enabled(1, True))
@@ -142,8 +156,10 @@ def test_new_member_warning_after_seven_days_contains_timestamps():
 
 
 def test_final_inactivity_warning_uses_week_two_copy():
-    member = _FakeMember(10)
-    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
     bot_state = _FakeBotState()
     service = _service(bot_state=bot_state, inactive_role_id=99)
     asyncio.run(service.set_enabled(1, True))
@@ -166,8 +182,10 @@ def test_final_inactivity_warning_uses_week_two_copy():
 
 
 def test_inactivity_kicks_when_expired():
-    member = _FakeMember(10)
-    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
     bot_state = _FakeBotState()
     service = _service(bot_state=bot_state, inactive_role_id=99)
     asyncio.run(service.set_enabled(1, True))
@@ -187,8 +205,10 @@ def test_inactivity_kicks_when_expired():
 
 
 def test_inactivity_maintenance_suppresses_dms_and_kicks():
-    member = _FakeMember(10)
-    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
     bot_state = _FakeBotState()
     service = _service(
         bot_state=bot_state,
@@ -210,3 +230,66 @@ def test_inactivity_maintenance_suppresses_dms_and_kicks():
     assert len(snapshots) == 1
     assert member.dm_messages == []
     assert member.kicked is False
+
+
+def test_inactivity_scans_all_members_not_just_pre_marked_role_members():
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, joined_at=datetime.now(timezone.utc) - timedelta(days=8), roles=[])
+    guild = _FakeGuild(1, role)
+    guild.members = [member]
+    bot_state = _FakeBotState()
+    service = _service(bot_state=bot_state, inactive_role_id=99)
+    asyncio.run(service.set_enabled(1, True))
+
+    snapshots = asyncio.run(service.process_guild(guild, send_notifications=False, perform_kicks=False))
+
+    assert len(snapshots) == 1
+    key_prefix = "inactivity:1:user:10"
+    assert f"{key_prefix}:assigned_at" in bot_state.values
+    assert f"{key_prefix}:remove_at" in bot_state.values
+
+
+def test_inactivity_clears_state_and_removes_role_when_member_becomes_active():
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, roles=[role])
+    role.members.append(member)
+    guild = _FakeGuild(1, role)
+    bot_state = _FakeBotState()
+    service = _service(bot_state=bot_state, inactive_role_id=99)
+    asyncio.run(service.set_enabled(1, True))
+
+    now = datetime.now(timezone.utc)
+    key_prefix = "inactivity:1:user:10"
+    bot_state.values[f"{key_prefix}:assigned_at"] = (now - timedelta(days=14)).isoformat()
+    bot_state.values[f"{key_prefix}:remove_at"] = (now + timedelta(days=7)).isoformat()
+    bot_state.values[f"{key_prefix}:initial_notice_sent"] = "true"
+    bot_state.values[f"{key_prefix}:final_notice_sent"] = "false"
+    bot_state.values["activity:1:user:10:last_active"] = now.isoformat()
+
+    snapshots = asyncio.run(service.process_guild(guild, send_notifications=False, perform_kicks=False))
+
+    assert snapshots == []
+    assert role not in member.roles
+    assert f"{key_prefix}:assigned_at" not in bot_state.values
+
+
+def test_inactivity_assigns_role_when_member_reaches_remove_at():
+    role = _FakeRole(99, [])
+    member = _FakeMember(10, roles=[])
+    guild = _FakeGuild(1, role)
+    guild.members = [member]
+    bot_state = _FakeBotState()
+    service = _service(bot_state=bot_state, inactive_role_id=99)
+    asyncio.run(service.set_enabled(1, True))
+
+    now = datetime.now(timezone.utc)
+    key_prefix = "inactivity:1:user:10"
+    bot_state.values[f"{key_prefix}:assigned_at"] = (now - timedelta(days=20)).isoformat()
+    bot_state.values[f"{key_prefix}:remove_at"] = (now - timedelta(minutes=5)).isoformat()
+    bot_state.values[f"{key_prefix}:initial_notice_sent"] = "true"
+    bot_state.values[f"{key_prefix}:final_notice_sent"] = "true"
+    bot_state.values["inactivity:1:bootstrapped_at"] = (now - timedelta(days=20)).isoformat()
+
+    asyncio.run(service.process_guild(guild, send_notifications=False, perform_kicks=False))
+
+    assert role in member.roles

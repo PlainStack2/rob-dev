@@ -125,22 +125,24 @@ class SendQueueService:
                         send.guild_id,
                     )
 
-        for send in pending:
-            ok = await self._post_send(send)
-            if ok:
-                log.info("Posted send id=%s guild_id=%s", send.id, send.guild_id)
-                try:
-                    log.info("Refreshing leaderboard for guild_id=%s", send.guild_id)
-                    await self.leaderboard_service.refresh_guild(send.guild_id)
-                except Exception:
-                    log.exception(
-                        "Leaderboard refresh failed after posted send_id=%s guild_id=%s.",
-                        send.id,
-                        send.guild_id,
-                    )
+        if not await self.maintenance.is_enabled():
+            for send in pending:
+                ok = await self._post_send(send)
+                if ok:
+                    log.info("Posted send id=%s guild_id=%s", send.id, send.guild_id)
+                    try:
+                        log.info("Refreshing leaderboard for guild_id=%s", send.guild_id)
+                        await self.leaderboard_service.refresh_guild(send.guild_id)
+                    except Exception:
+                        log.exception(
+                            "Leaderboard refresh failed after posted send_id=%s guild_id=%s.",
+                            send.id,
+                            send.guild_id,
+                        )
 
-        if await self.maintenance.consume_leaderboard_refresh_request():
-            await self.leaderboard_service.refresh_all_guilds()
+        if not await self.maintenance.is_enabled():
+            if await self.maintenance.consume_leaderboard_refresh_request():
+                await self.leaderboard_service.refresh_all_guilds()
 
     async def process_idle_tasks(self) -> None:
         """Run slow maintenance work without sweeping pending sends every tick."""
@@ -150,8 +152,9 @@ class SendQueueService:
                 log.info("Released %s queued maintenance send(s).", released)
                 await self.process_cycle()
 
-        if await self.maintenance.consume_leaderboard_refresh_request():
-            await self.leaderboard_service.refresh_all_guilds()
+        if not await self.maintenance.is_enabled():
+            if await self.maintenance.consume_leaderboard_refresh_request():
+                await self.leaderboard_service.refresh_all_guilds()
 
     async def notify_send(self, send_id: int) -> None:
         self._notification_queue().put_nowait(int(send_id))
@@ -213,6 +216,15 @@ class SendQueueService:
         return ok
 
     async def _post_send(self, send) -> bool:
+        if await self.maintenance.is_enabled():
+            log.info(
+                "Send id=%s guild_id=%s held during maintenance window.",
+                send.id,
+                send.guild_id,
+            )
+            await self.sends.update_status(send.id, "queued_maintenance")
+            return False
+
         settings = await self.guild_settings.get(send.guild_id)
         if settings is None or settings.send_track_channel_id is None:
             await self.sends.mark_failed(send.id, error="Missing send tracking channel configuration.")
@@ -298,10 +310,9 @@ class SendQueueService:
             return f"<@{user_id}>"
 
         def _announce_callback(user_id: int):
-            if announce_channel is None:
-                return None
-
             async def _callback(achievement) -> None:
+                if announce_channel is None:
+                    return
                 await announce_channel.send(
                     **achievement_unlocked_card(
                         achievement,

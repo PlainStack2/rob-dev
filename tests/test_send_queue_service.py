@@ -42,11 +42,17 @@ def _send() -> SendRecord:
 
 
 class _FakeMaintenance:
+    def __init__(self, enabled: bool = False, refresh_requested: bool = False):
+        self.enabled = enabled
+        self.refresh_requested = refresh_requested
+
     async def is_enabled(self) -> bool:
-        return False
+        return self.enabled
 
     async def consume_leaderboard_refresh_request(self) -> bool:
-        return False
+        current = self.refresh_requested
+        self.refresh_requested = False
+        return current
 
 
 class _FakeSettingsRepo:
@@ -61,6 +67,7 @@ class _FakeSends:
     def __init__(self) -> None:
         self.mark_posted_calls: list[int] = []
         self.mark_failed_calls: list[int] = []
+        self.update_status_calls: list[tuple[int, str]] = []
         self.released = 0
         self.pending = [_send()]
         self.queued_maintenance: list[SendRecord] = []
@@ -89,6 +96,45 @@ class _FakeSends:
     async def mark_failed(self, send_id: int, *, error: str):
         del error
         self.mark_failed_calls.append(send_id)
+
+    async def update_status(self, send_id: int, status: str):
+        self.update_status_calls.append((send_id, status))
+        for index, send in enumerate(self.pending):
+            if send.id != send_id:
+                continue
+            self.pending[index] = SendRecord(
+                send.id,
+                send.guild_id,
+                send.domme_id,
+                send.domme_user_id,
+                send.sub_id,
+                send.sub_user_id,
+                send.sub_name,
+                send.amount_cents,
+                send.currency,
+                send.method,
+                send.source,
+                send.item_name,
+                send.item_image_url,
+                send.external_id,
+                send.event_id,
+                send.fallback_event_hash,
+                send.is_private,
+                send.seeded,
+                send.sent_at,
+                send.received_at,
+                status,
+                send.discord_posted_at,
+                send.discord_message_id,
+                send.discord_post_error,
+                send.created_at,
+                send.is_test_send,
+                send.stored_public_send_id,
+            )
+            if status == "queued_maintenance":
+                self.queued_maintenance.append(self.pending.pop(index))
+            return True
+        return False
 
 
 class _FakeMessage:
@@ -348,6 +394,72 @@ def test_send_queue_count_recovery_does_not_depend_on_send_post_success():
     assert counting.send_ids == [1]
     assert sends.mark_failed_calls == [1]
     assert sends.mark_posted_calls == []
+
+
+def test_send_queue_holds_pending_sends_during_maintenance():
+    sends = _FakeSends()
+    leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
+    maintenance = _FakeMaintenance(enabled=True, refresh_requested=True)
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(),
+        maintenance=maintenance,
+        leaderboard_service=leaderboard,
+        counting_service=counting,
+    )
+
+    asyncio.run(service.process_cycle())
+
+    assert sends.mark_posted_calls == []
+    assert sends.update_status_calls == []
+    assert leaderboard.refresh_calls == []
+    assert leaderboard.refresh_all_calls == 0
+    assert counting.send_ids == [1]
+
+
+def test_send_queue_idle_tasks_skip_release_and_refresh_during_maintenance():
+    sends = _FakeSends()
+    sends.released = 2
+    leaderboard = _FakeLeaderboard()
+    maintenance = _FakeMaintenance(enabled=True, refresh_requested=True)
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(),
+        maintenance=maintenance,
+        leaderboard_service=leaderboard,
+        counting_service=_FakeCounting(),
+    )
+
+    asyncio.run(service.process_idle_tasks())
+
+    assert leaderboard.refresh_all_calls == 0
+    assert sends.mark_posted_calls == []
+
+
+def test_send_queue_requeues_notified_send_during_maintenance(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.send_queue_service.discord.TextChannel", _FakeChannel)
+    sends = _FakeSends()
+    leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(),
+        maintenance=_FakeMaintenance(enabled=True),
+        leaderboard_service=leaderboard,
+        counting_service=counting,
+    )
+
+    ok = asyncio.run(service.process_send_by_id(1))
+
+    assert ok is False
+    assert sends.update_status_calls == [(1, "queued_maintenance")]
+    assert sends.mark_posted_calls == []
+    assert leaderboard.refresh_calls == []
+    assert counting.send_ids == [1]
 
 
 def test_send_queue_processes_notified_send_by_id(monkeypatch: pytest.MonkeyPatch):
